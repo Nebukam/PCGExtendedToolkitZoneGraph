@@ -7,7 +7,7 @@
 #include "Modules/ModuleInterface.h"
 #include "Styling/SlateStyle.h"
 
-class FPCGExtendedToolkitEditorModule : public IModuleInterface
+class FPCGExtendedToolkitZoneGraphEditorModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override;

@@ -1,13 +1,14 @@
 // Copyright 2025 Timothé Lapetite and contributors
 // Released under the MIT license https://opensource.org/license/MIT/
 
-#include "PCGExtendedToolkit.h"
+#include "PCGExtendedToolkitZoneGraph.h"
 #if WITH_EDITOR
 #include "ISettingsModule.h"
 #endif
+
 #include "PCGExGlobalSettings.h"
 
-#define LOCTEXT_NAMESPACE "FPCGExtendedToolkitModule"
+#define LOCTEXT_NAMESPACE "FPCGExtendedToolkitZoneGraphModule"
 
 void FPCGExtendedToolkitZoneGraphModule::StartupModule()
 {
@@ -17,8 +18,8 @@ void FPCGExtendedToolkitZoneGraphModule::StartupModule()
 	{
 		SettingsModule->RegisterSettings(
 				"Project", "Plugins", "PCGEx",
-				LOCTEXT("PCGExDetailsName", "PCGEx"),
-				LOCTEXT("PCGExDetailsDescription", "Configure PCG Extended Toolkit settings"),
+				LOCTEXT("PCGExDetailsName", "PCGEx : ZoneGraph"),
+				LOCTEXT("PCGExDetailsDescription", "Configure PCG Extended Toolkit : Zone Graph settings"),
 				GetMutableDefault<UPCGExGlobalSettings>()
 			);
 	}

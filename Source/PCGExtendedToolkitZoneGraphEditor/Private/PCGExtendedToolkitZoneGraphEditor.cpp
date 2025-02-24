@@ -1,14 +1,15 @@
 ﻿// Copyright 2025 Timothé Lapetite and contributors
 // Released under the MIT license https://opensource.org/license/MIT/
 
-#include "PCGExtendedToolkitEditor.h"
+#include "PCGExtendedToolkitZoneGraphEditor.h"
+
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Interfaces/IPluginManager.h"
 #include "AssetRegistry/AssetData.h"
 #include "EditorStyleSet.h"
 
-#define LOCTEXT_NAMESPACE "FPCGExtendedToolkitEditorModule"
+#define LOCTEXT_NAMESPACE "FPCGExtendedToolkitZoneGraphEditorModule"
 
 #define PCGEX_ADD_ICON(_NAME) \
 Style->Set("ClassIcon." # _NAME, new FSlateImageBrush(Style->RootToContentDir(TEXT( "" #_NAME), TEXT(".png")), SizeIcon));\
@@ -21,53 +22,12 @@ Style->Set("PCGEx.Pin." # _NAME, new FSlateVectorImageBrush(Style->RootToContent
 #include "PCGGraph.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 
-namespace PCGExEditor
-{
-	static FAutoConsoleCommand CommandListEditorOnlyGraphs(
-		TEXT("pcgex.ListEditorOnlyGraphs"),
-		TEXT("Finds all graph marked as IsEditorOnly."),
-		FConsoleCommandDelegate::CreateLambda(
-			[]()
-			{
-				const FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-				const IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-				FARFilter Filter;
-				Filter.ClassPaths.Add(UPCGGraph::StaticClass()->GetClassPathName());
-				Filter.bRecursiveClasses = true;
-
-				TArray<FAssetData> AssetDataList;
-				AssetRegistry.GetAssets(Filter, AssetDataList);
-
-				if (AssetDataList.IsEmpty())
-				{
-					UE_LOG(LogTemp, Warning, TEXT("No Editor-only graph found."));
-					return;
-				}
-
-				const int32 NumTotalGraphs = AssetDataList.Num();
-				int32 NumEditorOnlyGraphs = 0;
-				for (const FAssetData& AssetData : AssetDataList)
-				{
-					if (UPCGGraph* Graph = Cast<UPCGGraph>(AssetData.GetAsset()))
-					{
-						if (Graph->IsEditorOnly())
-						{
-							NumEditorOnlyGraphs++;
-							UE_LOG(LogTemp, Warning, TEXT("%s"), *Graph->GetPathName());
-						}
-					}
-				}
-
-				UE_LOG(LogTemp, Warning, TEXT("Found %d EditorOnly graphs out of %d inspected graphs."), NumEditorOnlyGraphs, NumTotalGraphs);
-			}));
-}
-
-void FPCGExtendedToolkitEditorModule::StartupModule()
+void FPCGExtendedToolkitZoneGraphEditorModule::StartupModule()
 {
 	// I know this is cursed
 	FSlateStyleSet& AppStyle = const_cast<FSlateStyleSet&>(static_cast<const FSlateStyleSet&>(FAppStyle::Get()));
 
+	/*
 	Style = MakeShared<FSlateStyleSet>("PCGExStyleSet");
 	Style->SetContentRoot(IPluginManager::Get().FindPlugin(TEXT("PCGExtendedToolkit"))->GetBaseDir() / TEXT("Resources") / TEXT("Icons"));
 
@@ -118,13 +78,14 @@ void FPCGExtendedToolkitEditorModule::StartupModule()
 	PCGEX_ADD_PIN_EXTRA_ICON(OUT_Tensor)
 
 	PCGEX_ADD_PIN_EXTRA_ICON(OUT_Picker)
-
+	
 	FSlateStyleRegistry::RegisterSlateStyle(*Style.Get());
+	*/
 }
 
 #undef PCGEX_ADD_ICON
 
-void FPCGExtendedToolkitEditorModule::ShutdownModule()
+void FPCGExtendedToolkitZoneGraphEditorModule::ShutdownModule()
 {
 	FSlateStyleRegistry::UnRegisterSlateStyle(Style->GetStyleSetName());
 	Style.Reset();
@@ -132,4 +93,4 @@ void FPCGExtendedToolkitEditorModule::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE
 
-IMPLEMENT_MODULE(FPCGExtendedToolkitEditorModule, PCGExtendedToolkitEditor)
+IMPLEMENT_MODULE(FPCGExtendedToolkitZoneGraphEditorModule, PCGExtendedToolkitEditor)

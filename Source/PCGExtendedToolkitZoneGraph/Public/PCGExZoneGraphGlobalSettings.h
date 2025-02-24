@@ -15,12 +15,12 @@ namespace PCGEx
 }
 
 UCLASS(DefaultConfig, config = Editor, defaultconfig)
-class PCGEXTENDEDTOOLKIT_API UPCGExZoneGraphGlobalSettings : public UObject
+class PCGEXTENDEDTOOLKITZONEGRAPH_API UPCGExZoneGraphGlobalSettings : public UObject
 {
 	GENERATED_BODY()
 
 public:
-	/** Value applied by default to node caching when `Default` is selected -- note that some nodes may stop working as expected when working with cached data.*/
+	/**  */
 	UPROPERTY(EditAnywhere, config, Category = "Performance|Defaults")
 	bool bDefaultCacheNodeOutput = false;
 

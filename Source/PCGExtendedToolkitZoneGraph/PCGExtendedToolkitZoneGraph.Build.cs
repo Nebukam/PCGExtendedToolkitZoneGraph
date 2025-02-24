@@ -50,7 +50,8 @@ public class PCGExtendedToolkitZoneGraph : ModuleRules
 				"Slate",
 				"SlateCore",
 				"GameplayTags",
-				"PropertyPath"
+				"PropertyPath",
+				"PCGExtendedToolkit"
 			}
 		);
 
