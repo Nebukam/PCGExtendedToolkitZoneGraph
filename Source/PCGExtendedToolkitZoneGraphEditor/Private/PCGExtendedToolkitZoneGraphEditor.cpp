@@ -93,4 +93,4 @@ void FPCGExtendedToolkitZoneGraphEditorModule::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE
 
-IMPLEMENT_MODULE(FPCGExtendedToolkitZoneGraphEditorModule, PCGExtendedToolkitEditor)
+IMPLEMENT_MODULE(FPCGExtendedToolkitZoneGraphEditorModule, PCGExtendedToolkitZoneGraphEditor)
