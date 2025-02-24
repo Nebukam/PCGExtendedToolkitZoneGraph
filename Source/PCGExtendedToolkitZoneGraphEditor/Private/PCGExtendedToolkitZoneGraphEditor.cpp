@@ -87,8 +87,8 @@ void FPCGExtendedToolkitZoneGraphEditorModule::StartupModule()
 
 void FPCGExtendedToolkitZoneGraphEditorModule::ShutdownModule()
 {
-	FSlateStyleRegistry::UnRegisterSlateStyle(Style->GetStyleSetName());
-	Style.Reset();
+	//FSlateStyleRegistry::UnRegisterSlateStyle(Style->GetStyleSetName());
+	//Style.Reset();
 }
 
 #undef LOCTEXT_NAMESPACE
