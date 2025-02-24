@@ -18,8 +18,8 @@ void FPCGExtendedToolkitZoneGraphModule::StartupModule()
 	{
 		SettingsModule->RegisterSettings(
 				"Project", "Plugins", "PCGEx",
-				LOCTEXT("PCGExDetailsName", "PCGEx : ZoneGraph"),
-				LOCTEXT("PCGExDetailsDescription", "Configure PCG Extended Toolkit : Zone Graph settings"),
+				LOCTEXT("PCGExDetailsName", "PCGEx + ZoneGraph"),
+				LOCTEXT("PCGExDetailsDescription", "Configure PCG Extended Toolkit + Zone Graph settings"),
 				GetMutableDefault<UPCGExGlobalSettings>()
 			);
 	}

@@ -2,7 +2,7 @@
   "FileVersion": 3,
   "Version": 1,
   "VersionName": "0.1",
-  "FriendlyName": "PCGExtendedToolkit : Zone Graph",
+  "FriendlyName": "PCGExtendedToolkit + Zone Graph",
   "Description": "PCG Extended Toolkit Interop with Zone Graph plugin.",
   "Category": "PCG",
   "CreatedBy": "Timothé Lapetite",
@@ -13,7 +13,7 @@
   "CanContainContent": true,
   "EngineVersion": "5.5.0",
   "IsBetaVersion": true,
-  "IsExperimentalVersion": false,
+  "IsExperimentalVersion": true,
   "Installed": false,
   "Modules": [
     {
