@@ -131,7 +131,7 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<PCGExCluster::FNodeChainBuilder> ChainBuilder;
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
-		TArray<TSharedPtr<FZGPolygon>> Intersections;
+		TArray<TSharedPtr<FZGPolygon>> Polygons;
 
 		TArray<UZoneShapeComponent> RoadComponents;
 		TArray<UZoneShapeComponent> PolygonsComponents;
@@ -142,9 +142,12 @@ namespace PCGExClusterToZoneGraph
 		{
 		}
 
+		virtual bool IsTrivial() const override { return false; }
+
 		virtual bool Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager) override;
 		virtual void CompleteWork() override;
-		void BuildZGData();
+		void InitComponents();
+		void OnPolygonsCompilationComplete();
 		virtual void ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope) override;
 		virtual void OnRangeProcessingComplete() override;
 

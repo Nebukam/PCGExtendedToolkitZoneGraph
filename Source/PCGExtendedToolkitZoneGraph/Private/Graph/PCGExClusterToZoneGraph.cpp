@@ -171,7 +171,7 @@ namespace PCGExClusterToZoneGraph
 
 		if (!bIsProcessorValid) { return false; }
 
-		Intersections.Reserve(NumNodes / 2);
+		Polygons.Reserve(NumNodes / 2);
 
 		return true;
 	}
@@ -194,7 +194,7 @@ namespace PCGExClusterToZoneGraph
 			TSharedPtr<PCGExCluster::FNodeChain> Chain = ChainBuilder->Chains[i];
 			if (!Chain) { continue; }
 
-			if (Chain->SingleEdge == -1) { continue; } // TODO : Handle single-edge chain
+			if (Chain->SingleEdge != -1) { continue; } // TODO : Handle single-edge chain
 
 			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain);
 			Roads.Add(Road);
@@ -213,7 +213,7 @@ namespace PCGExClusterToZoneGraph
 				if (!PolygonPtr)
 				{
 					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, Start);
-					Intersections.Add(NewPolygon);
+					Polygons.Add(NewPolygon);
 					Map.Add(Start->Index, NewPolygon);
 					PolygonPtr = &NewPolygon;
 				}
@@ -227,7 +227,7 @@ namespace PCGExClusterToZoneGraph
 				if (!PolygonPtr)
 				{
 					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, End);
-					Intersections.Add(NewPolygon);
+					Polygons.Add(NewPolygon);
 					Map.Add(End->Index, NewPolygon);
 					PolygonPtr = &NewPolygon;
 				}
@@ -236,26 +236,33 @@ namespace PCGExClusterToZoneGraph
 			}
 		}
 
+		ChainBuilder.Reset();
+
 		MainThreadToken = AsyncManager->TryCreateToken(TEXT("ZGMainThreadToken"));
+
 		PCGEX_SUBSYSTEM
 		PCGExSubsystem->RegisterBeginTickAction(
 			[PCGEX_ASYNC_THIS_CAPTURE]()
 			{
 				PCGEX_ASYNC_THIS
-				This->BuildZGData();
+				This->InitComponents();
 				PCGEX_ASYNC_RELEASE_TOKEN(This->MainThreadToken)
 			});
-
-		ChainBuilder.Reset();
 	}
 
-	void FProcessor::BuildZGData()
+	void FProcessor::InitComponents()
 	{
 		AActor* TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
 
 		// Init components on main thread
-		for (const TSharedPtr<FZGPolygon>& Polygon : Intersections) { Polygon->InitComponent(TargetActor); }
+		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->InitComponent(TargetActor); }
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->InitComponent(TargetActor); }
+
+		if (Polygons.IsEmpty())
+		{
+			OnPolygonsCompilationComplete();
+			return;
+		}
 
 		PCGEX_ASYNC_GROUP_CHKD_VOID(AsyncManager, CompileIntersections)
 
@@ -263,17 +270,23 @@ namespace PCGExClusterToZoneGraph
 			[PCGEX_ASYNC_THIS_CAPTURE]()
 			{
 				PCGEX_ASYNC_THIS
-				This->OnNodesProcessingComplete();
+				This->OnPolygonsCompilationComplete();
 			};
 
 		CompileIntersections->OnSubLoopStartCallback =
 			[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
 			{
 				PCGEX_ASYNC_THIS
-				for (int i = Scope.Start; i < Scope.End; i++) { This->Intersections[i]->Compile(This->Cluster); }
+				for (int i = Scope.Start; i < Scope.End; i++) { This->Polygons[i]->Compile(This->Cluster); }
 			};
 
-		CompileIntersections->StartSubLoops(Intersections.Num(), 32);
+		CompileIntersections->StartSubLoops(Polygons.Num(), 32);
+	}
+
+	void FProcessor::OnPolygonsCompilationComplete()
+	{
+		if (Roads.IsEmpty()) { return; }
+		StartParallelLoopForRange(Roads.Num(), 32);
 	}
 
 	void FProcessor::ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope)
@@ -302,7 +315,7 @@ namespace PCGExClusterToZoneGraph
 
 		const FAttachmentTransformRules AttachmentRules = Settings->AttachmentRules.GetRules();
 
-		for (const TSharedPtr<FZGPolygon>& Polygon : Intersections) { Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules); }
+		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules); }
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Context->AttachManagedComponent(TargetActor, Road->Component, AttachmentRules); }
 
 		Context->NotifyActors.Add(TargetActor);
@@ -311,8 +324,8 @@ namespace PCGExClusterToZoneGraph
 	void FProcessor::Cleanup()
 	{
 		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
-		Intersections.Empty();
 		Roads.Empty();
+		Polygons.Empty();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
