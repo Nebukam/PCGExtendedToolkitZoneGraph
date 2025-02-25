@@ -93,35 +93,44 @@ namespace PCGExClusterToZoneGraph
 		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags) { Component->ComponentTags.Add(FName(ComponentTag)); }
 	}
 
-	FZGRoad::FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain)
-		: FZGBase(InProcessor), Chain(InChain)
+	FZGRoad::FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain, const bool InReverse)
+		: FZGBase(InProcessor), Chain(InChain), bIsReversed(InReverse)
 	{
 	}
 
-	void FZGRoad::Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster)
+	void FZGRoad::Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster)
 	{
-		/*
-		const TSharedPtr<PCGExCluster::FNodeChain> Chain = ChainBuilder->Chains[Iteration];
-		if (!Chain) { return; }
+		Component->SetShapeType(FZoneShapeType::Spline);
 
-		const int32 ChainSize = Chain->Links.Num() + 1;
+		TArray<int32> Nodes;
+		const int32 ChainSize = Chain->GetNodes(Cluster, Nodes, bIsReversed);
 
-		PCGExGraph::FEdge ChainDir = PCGExGraph::FEdge(Chain->Seed.Edge, Cluster->GetNode(Chain->Seed)->PointIndex, Cluster->GetNode(Chain->Links.Last())->PointIndex);
-		const bool bReverse = DirectionSettings.SortEndpoints(Cluster.Get(), ChainDir);
+		TArray<FZoneShapePoint>& MutablePoints = Component->GetMutablePoints();
+		PCGEx::InitArray(MutablePoints, ChainSize);
 
-		bool bDoReverse = bReverse;
-
-
-		TArray<FPCGPoint> MutablePoints;
-		MutablePoints.SetNumUninitialized(ChainSize);
-		// MutablePoints[0] = PathIO->GetInPoint(Cluster->GetNode(Chain->Seed)->PointIndex); // First point in chain
-
-		for (int i = 1; i < ChainSize; i++)
+		for (int i = 0; i < ChainSize; i++)
 		{
-			// MutablePoints[i] = PathIO->GetInPoint(Cluster->GetNode(Chain->Links[i - 1])->PointIndex); // Subsequent points
-		}
+			const PCGExCluster::FNode* Node = Cluster->GetNode(Nodes[i]);
+			const FVector Position = Cluster->GetPos(Node);
+			FVector NextPosition = Position;
+			i == ChainSize - 1 ? Position : Cluster->GetPos(Nodes[i + 1]);
 
-		if (bDoReverse) { Algo::Reverse(MutablePoints); }
+			if (i == ChainSize - 1)
+			{
+				NextPosition = Position + (Position - Cluster->GetPos(Nodes[i - 1]));
+			}
+			else
+			{
+				NextPosition = Cluster->GetPos(Nodes[i + 1]);
+			}
+			
+			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
+			ShapePoint.Rotation = FRotationMatrix::MakeFromX(NextPosition - Position).Rotator();
+
+			// TODO : Point setup
+
+			MutablePoints[i] = ShapePoint;
+		}
 
 		if (!Chain->bIsClosedLoop)
 		{
@@ -129,7 +138,6 @@ namespace PCGExClusterToZoneGraph
 		else
 		{
 		}
-		*/
 	}
 
 	FZGPolygon::FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExCluster::FNode* InNode)
@@ -144,17 +152,37 @@ namespace PCGExClusterToZoneGraph
 		FromStart[Chains.Add(InRoad)] = bFromStart;
 	}
 
-	void FZGPolygon::Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster)
+	void FZGPolygon::Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster)
 	{
+		Component->SetShapeType(FZoneShapeType::Polygon);
+
 		TArray<int32> Order;
 		PCGEx::ArrayOfIndices(Order, Chains.Num());
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const double VA = PCGExMath::GetRadiansBetweenVectors(InCluster->GetEdgeDir(FromStart[A]), FVector::ForwardVector);
-				const double VB = PCGExMath::GetRadiansBetweenVectors(InCluster->GetEdgeDir(FromStart[B]), FVector::ForwardVector);
+				const double VA = PCGExMath::GetRadiansBetweenVectors(Cluster->GetEdgeDir(FromStart[A]), FVector::ForwardVector);
+				const double VB = PCGExMath::GetRadiansBetweenVectors(Cluster->GetEdgeDir(FromStart[B]), FVector::ForwardVector);
 				return VA > VB;
 			});
+
+		TArray<FZoneShapePoint>& MutablePoints = Component->GetMutablePoints();
+		PCGEx::InitArray(MutablePoints, Order.Num());
+
+		// Build polygon
+
+		for (int i = 0; i < Order.Num(); i++)
+		{
+			const int32 Ri = Order[i];
+			const TSharedPtr<FZGRoad> Road = Chains[Ri];
+
+			// TODO : Find proper road intersection location
+
+			FZoneShapePoint ShapePoint = FZoneShapePoint(FromStart[Ri] ? Cluster->GetPos(Road->Chain->Links[0].Node) : Cluster->GetPos(Road->Chain->Links.Last(1).Node));
+			// ShapePoint.Rotation = ;
+
+			MutablePoints[i] = ShapePoint;
+		}
 	}
 
 	bool FProcessor::Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager)
@@ -196,13 +224,13 @@ namespace PCGExClusterToZoneGraph
 
 			if (Chain->SingleEdge != -1) { continue; } // TODO : Handle single-edge chain
 
-			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain);
+			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, Chain->Seed.Node, Chain->Links.Last().Node);
+			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain, bReverse);
 			Roads.Add(Road);
 
 			const PCGExCluster::FNode* Start = Cluster->GetNode(Chain->Seed.Node);
 			const PCGExCluster::FNode* End = Cluster->GetNode(Chain->Links.Last().Node);
 
-			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, Chain->Seed.Node, Chain->Links.Last().Node);
 
 			if (Chain->bIsClosedLoop && Start->IsBinary() && End->IsBinary()) { continue; } // Roaming closed loop
 

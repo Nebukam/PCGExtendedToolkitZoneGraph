@@ -96,11 +96,12 @@ namespace PCGExClusterToZoneGraph
 
 	class FZGRoad : public FZGBase
 	{
-		TSharedPtr<PCGExCluster::FNodeChain> Chain;
-
 	public:
-		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain);
-		void Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster);
+		TSharedPtr<PCGExCluster::FNodeChain> Chain;
+		bool bIsReversed = false;
+		
+		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain, const bool InReverse);
+		void Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster);
 	};
 
 	class FZGPolygon : public FZGBase
@@ -114,7 +115,7 @@ namespace PCGExClusterToZoneGraph
 		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExCluster::FNode* InNode);
 
 		void Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart);
-		void Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster);
+		void Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster);
 	};
 
 	class FProcessor final : public PCGExClusterMT::TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>
