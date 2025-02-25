@@ -3,6 +3,9 @@
 
 #include "Graph/PCGExClusterToZoneGraph.h"
 
+#include "PCGExSubSystem.h"
+#include "ZoneShapeComponent.h"
+
 #include "Curve/CurveUtil.h"
 #include "Graph/PCGExChain.h"
 #include "Graph/Filters/PCGExClusterFilter.h"
@@ -18,11 +21,25 @@ PCGEX_INITIALIZE_ELEMENT(ClusterToZoneGraph)
 
 bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 {
-	if (!FPCGExEdgesProcessorElement::Boot(InContext)) { return false; }
-
 	PCGEX_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
 
+#if WITH_EDITOR
+	if (!FPCGExEdgesProcessorElement::Boot(InContext)) { return false; }
+
+	if (InContext->SourceComponent.IsValid())
+	{
+		if (InContext->SourceComponent->GenerationTrigger == EPCGComponentGenerationTrigger::GenerateAtRuntime)
+		{
+			PCGE_LOG_C(Error, GraphAndLog, Context, FTEXT("Zone Graph PCG Nodes should not be used in runtime-generated PCG components."));
+			return false;
+		}
+	}
+
 	return true;
+#else
+	PCGE_LOG_C(Error, GraphAndLog, Context, FTEXT("Zone Graph PCG Nodes are only supported in editor."));
+	return false;
+#endif
 }
 
 bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
@@ -38,6 +55,7 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 			[](const TSharedPtr<PCGExData::FPointIOTaggedEntries>& Entries) { return true; },
 			[&](const TSharedPtr<PCGExClusterToZoneGraph::FBatch>& NewBatch)
 			{
+				NewBatch->bRequiresWriteStep = true; // Not really but we need the step
 			}))
 		{
 			return Context->CancelExecution(TEXT("Could not build any clusters."));
@@ -46,41 +64,43 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 
 	PCGEX_CLUSTER_BATCH_PROCESSING(PCGEx::State_Done)
 
+	Context->OutputBatches();
 	Context->OutputPointsAndEdges();
+
 	return Context->TryComplete();
 }
 
 namespace PCGExClusterToZoneGraph
 {
-	bool FProcessor::Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager)
+	FZGBase::FZGBase(const TSharedPtr<FProcessor>& InProcessor)
+		: Processor(InProcessor)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(PCGExClusterToZoneGraph::Process);
-
-		if (!FClusterProcessor::Process(InAsyncManager)) { return false; }
-
-		if (!DirectionSettings.InitFromParent(ExecutionContext, StaticCastWeakPtr<FBatch>(ParentBatch).Pin()->DirectionSettings, EdgeDataFacade)) { return false; }
-
-		ChainBuilder = MakeShared<PCGExCluster::FNodeChainBuilder>(Cluster.ToSharedRef());
-		ChainBuilder->Breakpoints = Breakpoints;
-		bIsProcessorValid = ChainBuilder->Compile(AsyncManager);
-
-		return true;
 	}
 
-
-	void FProcessor::CompleteWork()
+	void FZGBase::InitComponent(AActor* InTargetActor)
 	{
-		if (ChainBuilder->Chains.IsEmpty())
+		if (!InTargetActor)
 		{
-			bIsProcessorValid = false;
+			PCGE_LOG_C(Error, GraphAndLog, Processor->GetContext(), FTEXT("Invalid target actor."));
 			return;
 		}
 
-		StartParallelLoopForRange(ChainBuilder->Chains.Num());
+		const FString ComponentName = TEXT("PCGZoneGraphComponent");
+		const EObjectFlags ObjectFlags = (Processor->GetContext()->SourceComponent.Get()->IsInPreviewMode() ? RF_Transient : RF_NoFlags);
+		Component = Processor->GetContext()->ManagedObjects->New<UZoneShapeComponent>(InTargetActor, MakeUniqueObjectName(InTargetActor, UZoneShapeComponent::StaticClass(), FName(ComponentName)), ObjectFlags);
+
+		Component->ComponentTags.Reserve(Component->ComponentTags.Num() + Processor->GetContext()->ComponentTags.Num());
+		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags) { Component->ComponentTags.Add(FName(ComponentTag)); }
 	}
 
-	void FProcessor::ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope)
+	FZGRoad::FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain)
+		: FZGBase(InProcessor), Chain(InChain)
 	{
+	}
+
+	void FZGRoad::Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster)
+	{
+		/*
 		const TSharedPtr<PCGExCluster::FNodeChain> Chain = ChainBuilder->Chains[Iteration];
 		if (!Chain) { return; }
 
@@ -91,7 +111,7 @@ namespace PCGExClusterToZoneGraph
 
 		bool bDoReverse = bReverse;
 
-		
+
 		TArray<FPCGPoint> MutablePoints;
 		MutablePoints.SetNumUninitialized(ChainSize);
 		// MutablePoints[0] = PathIO->GetInPoint(Cluster->GetNode(Chain->Seed)->PointIndex); // First point in chain
@@ -109,13 +129,196 @@ namespace PCGExClusterToZoneGraph
 		else
 		{
 		}
+		*/
+	}
+
+	FZGPolygon::FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExCluster::FNode* InNode)
+		: FZGBase(InProcessor)
+	{
+		FromStart.Init(false, InNode->Num());
+		Chains.Reserve(InNode->Num());
+	}
+
+	void FZGPolygon::Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart)
+	{
+		FromStart[Chains.Add(InRoad)] = bFromStart;
+	}
+
+	void FZGPolygon::Compile(const TSharedPtr<PCGExCluster::FCluster>& InCluster)
+	{
+		TArray<int32> Order;
+		PCGEx::ArrayOfIndices(Order, Chains.Num());
+		Order.Sort(
+			[&](const int32 A, const int32 B)
+			{
+				const double VA = PCGExMath::GetRadiansBetweenVectors(InCluster->GetEdgeDir(FromStart[A]), FVector::ForwardVector);
+				const double VB = PCGExMath::GetRadiansBetweenVectors(InCluster->GetEdgeDir(FromStart[B]), FVector::ForwardVector);
+				return VA > VB;
+			});
+	}
+
+	bool FProcessor::Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager)
+	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(PCGExClusterToZoneGraph::Process);
+
+		if (!FClusterProcessor::Process(InAsyncManager)) { return false; }
+
+		if (!DirectionSettings.InitFromParent(ExecutionContext, StaticCastWeakPtr<FBatch>(ParentBatch).Pin()->DirectionSettings, EdgeDataFacade)) { return false; }
+
+		ChainBuilder = MakeShared<PCGExCluster::FNodeChainBuilder>(Cluster.ToSharedRef());
+		ChainBuilder->Breakpoints = Breakpoints;
+		bIsProcessorValid = ChainBuilder->Compile(AsyncManager);
+
+		if (!bIsProcessorValid) { return false; }
+
+		Intersections.Reserve(NumNodes / 2);
+
+		return true;
+	}
+
+
+	void FProcessor::CompleteWork()
+	{
+		if (ChainBuilder->Chains.IsEmpty())
+		{
+			bIsProcessorValid = false;
+			return;
+		}
+
+		TMap<int32, TSharedPtr<FZGPolygon>> Map;
+		TSharedPtr<FProcessor> This = SharedThis(this);
+
+		const int32 NumChains = ChainBuilder->Chains.Num();
+		for (int i = 0; i < NumChains; i++)
+		{
+			TSharedPtr<PCGExCluster::FNodeChain> Chain = ChainBuilder->Chains[i];
+			if (!Chain) { continue; }
+
+			if (Chain->SingleEdge == -1) { continue; } // TODO : Handle single-edge chain
+
+			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain);
+			Roads.Add(Road);
+
+			const PCGExCluster::FNode* Start = Cluster->GetNode(Chain->Seed.Node);
+			const PCGExCluster::FNode* End = Cluster->GetNode(Chain->Links.Last().Node);
+
+			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, Chain->Seed.Node, Chain->Links.Last().Node);
+
+			if (Chain->bIsClosedLoop && Start->IsBinary() && End->IsBinary()) { continue; } // Roaming closed loop
+
+			if (!Start->IsLeaf())
+			{
+				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(Start->Index);
+
+				if (!PolygonPtr)
+				{
+					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, Start);
+					Intersections.Add(NewPolygon);
+					Map.Add(Start->Index, NewPolygon);
+					PolygonPtr = &NewPolygon;
+				}
+				(*PolygonPtr)->Add(Road, true);
+			}
+
+			if (!End->IsLeaf())
+			{
+				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(End->Index);
+
+				if (!PolygonPtr)
+				{
+					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, End);
+					Intersections.Add(NewPolygon);
+					Map.Add(End->Index, NewPolygon);
+					PolygonPtr = &NewPolygon;
+				}
+
+				(*PolygonPtr)->Add(Road, false);
+			}
+		}
+
+		MainThreadToken = AsyncManager->TryCreateToken(TEXT("ZGMainThreadToken"));
+		PCGEX_SUBSYSTEM
+		PCGExSubsystem->RegisterBeginTickAction(
+			[PCGEX_ASYNC_THIS_CAPTURE]()
+			{
+				PCGEX_ASYNC_THIS
+				This->BuildZGData();
+				PCGEX_ASYNC_RELEASE_TOKEN(This->MainThreadToken)
+			});
+
+		ChainBuilder.Reset();
+	}
+
+	void FProcessor::BuildZGData()
+	{
+		AActor* TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
+
+		// Init components on main thread
+		for (const TSharedPtr<FZGPolygon>& Polygon : Intersections) { Polygon->InitComponent(TargetActor); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->InitComponent(TargetActor); }
+
+		PCGEX_ASYNC_GROUP_CHKD_VOID(AsyncManager, CompileIntersections)
+
+		CompileIntersections->OnCompleteCallback =
+			[PCGEX_ASYNC_THIS_CAPTURE]()
+			{
+				PCGEX_ASYNC_THIS
+				This->OnNodesProcessingComplete();
+			};
+
+		CompileIntersections->OnSubLoopStartCallback =
+			[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
+			{
+				PCGEX_ASYNC_THIS
+				for (int i = Scope.Start; i < Scope.End; i++) { This->Intersections[i]->Compile(This->Cluster); }
+			};
+
+		CompileIntersections->StartSubLoops(Intersections.Num(), 32);
+	}
+
+	void FProcessor::ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope)
+	{
+		// Compile road, after intersections.
+		Roads[Iteration]->Compile(Cluster);
+	}
+
+	void FProcessor::OnRangeProcessingComplete()
+	{
+	}
+
+	void FProcessor::Output()
+	{
+		if (!this->bIsProcessorValid) { return; }
+
+		TRACE_CPUPROFILER_EVENT_SCOPE(UPCGExClusterToZoneGraph::FProcessor::Output);
+
+		AActor* TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
+
+		if (!TargetActor)
+		{
+			PCGE_LOG_C(Error, GraphAndLog, ExecutionContext, FTEXT("Invalid target actor."));
+			return;
+		}
+
+		const FAttachmentTransformRules AttachmentRules = Settings->AttachmentRules.GetRules();
+
+		for (const TSharedPtr<FZGPolygon>& Polygon : Intersections) { Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads) { Context->AttachManagedComponent(TargetActor, Road->Component, AttachmentRules); }
+
+		Context->NotifyActors.Add(TargetActor);
+	}
+
+	void FProcessor::Cleanup()
+	{
+		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
+		Intersections.Empty();
+		Roads.Empty();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
 	{
 		TBatch<FProcessor>::RegisterBuffersDependencies(FacadePreloader);
 		PCGEX_TYPED_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
-		//PCGExPointFilter::RegisterBuffersDependencies(ExecutionContext, Context->FilterFactories, FacadePreloader);
 		DirectionSettings.RegisterBuffersDependencies(ExecutionContext, FacadePreloader);
 	}
 
