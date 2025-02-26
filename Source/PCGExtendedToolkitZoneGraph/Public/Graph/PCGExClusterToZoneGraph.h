@@ -53,13 +53,13 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	double PolygonRadius = 100;
-	
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
-	
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FZoneShapePointType PolygonPointType = FZoneShapePointType::LaneProfile;
-	
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FZoneShapePointType RoadPointType = FZoneShapePointType::LaneProfile;
 
@@ -114,7 +114,7 @@ namespace PCGExClusterToZoneGraph
 	public:
 		TSharedPtr<PCGExCluster::FNodeChain> Chain;
 		bool bIsReversed = false;
-		
+
 		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain, const bool InReverse);
 		void Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster);
 	};

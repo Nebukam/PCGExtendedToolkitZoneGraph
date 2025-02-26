@@ -5,8 +5,6 @@
 
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
-
-#include "Curve/CurveUtil.h"
 #include "Graph/PCGExChain.h"
 #include "Graph/Filters/PCGExClusterFilter.h"
 #include "Paths/PCGExPaths.h"
@@ -80,6 +78,7 @@ namespace PCGExClusterToZoneGraph
 			return;
 		}
 
+		// This executes on the main thread for safety
 		const FString ComponentName = TEXT("PCGZoneGraphComponent");
 		const EObjectFlags ObjectFlags = (Processor->GetContext()->SourceComponent.Get()->IsInPreviewMode() ? RF_Transient : RF_NoFlags);
 		Component = Processor->GetContext()->ManagedObjects->New<UZoneShapeComponent>(InTargetActor, MakeUniqueObjectName(InTargetActor, UZoneShapeComponent::StaticClass(), FName(ComponentName)), ObjectFlags);
@@ -241,8 +240,6 @@ namespace PCGExClusterToZoneGraph
 		TMap<int32, TSharedPtr<FZGPolygon>> Map;
 		TSharedPtr<FProcessor> This = SharedThis(this);
 
-		PCGEx::FIndexLookup& Idx = *Cluster->NodeIndexLookup.Get();
-
 		const int32 NumChains = ChainBuilder->Chains.Num();
 		for (int i = 0; i < NumChains; i++)
 		{
@@ -329,6 +326,8 @@ namespace PCGExClusterToZoneGraph
 			return;
 		}
 
+		// Dispatch async polygon processing
+
 		PCGEX_ASYNC_GROUP_CHKD_VOID(AsyncManager, CompileIntersections)
 
 		CompileIntersections->OnCompleteCallback =
@@ -356,7 +355,7 @@ namespace PCGExClusterToZoneGraph
 
 	void FProcessor::ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope)
 	{
-		// Compile road, after intersections.
+		// Compile road, after polygons -- since polygons will feed road their start/end offset
 		Roads[Iteration]->Compile(Cluster);
 	}
 

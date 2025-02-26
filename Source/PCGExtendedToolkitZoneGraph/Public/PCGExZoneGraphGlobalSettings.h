@@ -7,13 +7,6 @@
 
 #include "PCGExZoneGraphGlobalSettings.generated.h"
 
-class UPCGPin;
-
-namespace PCGEx
-{
-	
-}
-
 UCLASS(DefaultConfig, config = Editor, defaultconfig)
 class PCGEXTENDEDTOOLKITZONEGRAPH_API UPCGExZoneGraphGlobalSettings : public UObject
 {
@@ -21,7 +14,6 @@ class PCGEXTENDEDTOOLKITZONEGRAPH_API UPCGExZoneGraphGlobalSettings : public UOb
 
 public:
 	/**  */
-	UPROPERTY(EditAnywhere, config, Category = "Performance|Defaults")
-	bool bDefaultCacheNodeOutput = false;
-
+	//UPROPERTY(EditAnywhere, config, Category = "Performance|Defaults")
+	//bool bDefaultCacheNodeOutput = false;
 };
