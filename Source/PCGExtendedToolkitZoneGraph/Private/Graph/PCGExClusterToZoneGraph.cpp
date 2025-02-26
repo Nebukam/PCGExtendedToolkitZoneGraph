@@ -23,7 +23,6 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 {
 	PCGEX_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
 
-#if WITH_EDITOR
 	if (!FPCGExEdgesProcessorElement::Boot(InContext)) { return false; }
 
 	if (InContext->SourceComponent.IsValid())
@@ -36,10 +35,6 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 	}
 
 	return true;
-#else
-	PCGE_LOG_C(Error, GraphAndLog, Context, FTEXT("Zone Graph PCG Nodes are only supported in editor."));
-	return false;
-#endif
 }
 
 bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
