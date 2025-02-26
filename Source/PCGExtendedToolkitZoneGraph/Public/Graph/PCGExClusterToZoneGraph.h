@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ZoneGraphTypes.h"
 #include "Graph/PCGExChain.h"
 #include "Graph/PCGExEdgesProcessor.h"
 #include "Transform/PCGExTransform.h"
@@ -50,6 +51,18 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FPCGExAttachmentRules AttachmentRules;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	double PolygonRadius = 100;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	FZoneShapePointType PolygonPointType = FZoneShapePointType::LaneProfile;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	FZoneShapePointType RoadPointType = FZoneShapePointType::LaneProfile;
+
 private:
 	friend class FPCGExClusterToZoneGraphElement;
 };
@@ -89,6 +102,8 @@ namespace PCGExClusterToZoneGraph
 
 	public:
 		UZoneShapeComponent* Component = nullptr;
+		double StartRadius = 0;
+		double EndRadius = 0;
 
 		explicit FZGBase(const TSharedPtr<FProcessor>& InProcessor);
 		void InitComponent(AActor* InTargetActor);

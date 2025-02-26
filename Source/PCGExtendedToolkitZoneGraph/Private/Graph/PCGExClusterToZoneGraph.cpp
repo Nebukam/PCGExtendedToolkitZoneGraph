@@ -123,14 +123,18 @@ namespace PCGExClusterToZoneGraph
 			{
 				NextPosition = Cluster->GetPos(Nodes[i + 1]);
 			}
-			
+
 			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
-			ShapePoint.Rotation = FRotationMatrix::MakeFromX(NextPosition - Position).Rotator();
+			ShapePoint.SetRotationFromForwardAndUp((NextPosition - Position), FVector::UpVector);
+			ShapePoint.Type = Processor->GetSettings()->RoadPointType;
 
 			// TODO : Point setup
 
 			MutablePoints[i] = ShapePoint;
 		}
+
+		MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; 
+		MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; 
 
 		if (!Chain->bIsClosedLoop)
 		{
@@ -138,10 +142,12 @@ namespace PCGExClusterToZoneGraph
 		else
 		{
 		}
+
+		Component->UpdateShape();
 	}
 
 	FZGPolygon::FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExCluster::FNode* InNode)
-		: FZGBase(InProcessor)
+		: FZGBase(InProcessor), NodeIndex(InNode->Index)
 	{
 		FromStart.Init(false, InNode->Num());
 		Chains.Reserve(InNode->Num());
@@ -155,15 +161,27 @@ namespace PCGExClusterToZoneGraph
 	void FZGPolygon::Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster)
 	{
 		Component->SetShapeType(FZoneShapeType::Polygon);
+		Component->SetPolygonRoutingType(Processor->GetSettings()->PolygonRoutingType);
+
+		const PCGExCluster::FNode* Center = Cluster->GetNode(NodeIndex);
+		const FVector CenterPosition = Cluster->GetPos(Center);
 
 		TArray<int32> Order;
 		PCGEx::ArrayOfIndices(Order, Chains.Num());
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const double VA = PCGExMath::GetRadiansBetweenVectors(Cluster->GetEdgeDir(FromStart[A]), FVector::ForwardVector);
-				const double VB = PCGExMath::GetRadiansBetweenVectors(Cluster->GetEdgeDir(FromStart[B]), FVector::ForwardVector);
-				return VA > VB;
+				const FVector DirA =
+					FromStart[A] ?
+						Cluster->GetDir(Chains[A]->Chain->Seed.Node, Chains[A]->Chain->Links[0].Node) :
+						Cluster->GetDir(Chains[A]->Chain->Links.Last().Node, Chains[A]->Chain->Links.Last(1).Node);
+
+				const FVector DirB =
+					FromStart[B] ?
+						Cluster->GetDir(Chains[B]->Chain->Seed.Node, Chains[B]->Chain->Links[0].Node) :
+						Cluster->GetDir(Chains[B]->Chain->Links.Last().Node, Chains[B]->Chain->Links.Last(1).Node);
+
+				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
 
 		TArray<FZoneShapePoint>& MutablePoints = Component->GetMutablePoints();
@@ -178,11 +196,22 @@ namespace PCGExClusterToZoneGraph
 
 			// TODO : Find proper road intersection location
 
-			FZoneShapePoint ShapePoint = FZoneShapePoint(FromStart[Ri] ? Cluster->GetPos(Road->Chain->Links[0].Node) : Cluster->GetPos(Road->Chain->Links.Last(1).Node));
-			// ShapePoint.Rotation = ;
+			const PCGExCluster::FNode* OtherNode = FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1));
+			const FVector OtherPosition = Cluster->GetPos(OtherNode);
+			const FVector RoadDirection = (OtherPosition - CenterPosition).GetSafeNormal();
+			double Radius = Processor->GetSettings()->PolygonRadius;
+
+			if (FromStart[Ri]) { Road->StartRadius = Radius; }
+			else { Road->EndRadius = Radius; }
+
+			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * Radius);
+			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
+			ShapePoint.Type = Processor->GetSettings()->PolygonPointType;
 
 			MutablePoints[i] = ShapePoint;
 		}
+
+		Component->UpdateShape();
 	}
 
 	bool FProcessor::Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager)
