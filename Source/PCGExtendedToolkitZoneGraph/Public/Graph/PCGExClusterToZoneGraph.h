@@ -122,7 +122,7 @@ namespace PCGExClusterToZoneGraph
 	class FZGPolygon : public FZGBase
 	{
 	protected:
-		TArray<TSharedPtr<FZGRoad>> Chains;
+		TArray<TSharedPtr<FZGRoad>> Roads;
 		TBitArray<> FromStart;
 
 	public:

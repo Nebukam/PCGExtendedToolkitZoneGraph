@@ -111,7 +111,7 @@ namespace PCGExClusterToZoneGraph
 		for (int i = 0; i < ChainSize; i++)
 		{
 			const PCGExCluster::FNode* Node = Cluster->GetNode(Nodes[i]);
-			const FVector Position = Cluster->GetPos(Node);
+			FVector Position = Cluster->GetPos(Node);
 			FVector NextPosition = Position;
 			i == ChainSize - 1 ? Position : Cluster->GetPos(Nodes[i + 1]);
 
@@ -133,8 +133,8 @@ namespace PCGExClusterToZoneGraph
 			MutablePoints[i] = ShapePoint;
 		}
 
-		MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; 
-		MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; 
+		MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius;
+		MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius;
 
 		if (!Chain->bIsClosedLoop)
 		{
@@ -150,12 +150,12 @@ namespace PCGExClusterToZoneGraph
 		: FZGBase(InProcessor), NodeIndex(InNode->Index)
 	{
 		FromStart.Init(false, InNode->Num());
-		Chains.Reserve(InNode->Num());
+		Roads.Reserve(InNode->Num());
 	}
 
 	void FZGPolygon::Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart)
 	{
-		FromStart[Chains.Add(InRoad)] = bFromStart;
+		FromStart[Roads.Add(InRoad)] = bFromStart;
 	}
 
 	void FZGPolygon::Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster)
@@ -167,20 +167,12 @@ namespace PCGExClusterToZoneGraph
 		const FVector CenterPosition = Cluster->GetPos(Center);
 
 		TArray<int32> Order;
-		PCGEx::ArrayOfIndices(Order, Chains.Num());
+		PCGEx::ArrayOfIndices(Order, Roads.Num());
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const FVector DirA =
-					FromStart[A] ?
-						Cluster->GetDir(Chains[A]->Chain->Seed.Node, Chains[A]->Chain->Links[0].Node) :
-						Cluster->GetDir(Chains[A]->Chain->Links.Last().Node, Chains[A]->Chain->Links.Last(1).Node);
-
-				const FVector DirB =
-					FromStart[B] ?
-						Cluster->GetDir(Chains[B]->Chain->Seed.Node, Chains[B]->Chain->Links[0].Node) :
-						Cluster->GetDir(Chains[B]->Chain->Links.Last().Node, Chains[B]->Chain->Links.Last(1).Node);
-
+				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, FromStart[A]);
+				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, FromStart[B]);
 				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
 
@@ -192,11 +184,20 @@ namespace PCGExClusterToZoneGraph
 		for (int i = 0; i < Order.Num(); i++)
 		{
 			const int32 Ri = Order[i];
-			const TSharedPtr<FZGRoad> Road = Chains[Ri];
+			const TSharedPtr<FZGRoad> Road = Roads[Ri];
 
 			// TODO : Find proper road intersection location
 
-			const PCGExCluster::FNode* OtherNode = FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1));
+			const PCGExCluster::FNode* OtherNode = nullptr;
+
+			if (Road->Chain->SingleEdge != -1)
+			{
+				OtherNode = FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links.Last()) : Cluster->GetNode(Road->Chain->Seed.Node);
+			}
+			else
+			{
+				OtherNode = FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1));
+			}
 			const FVector OtherPosition = Cluster->GetPos(OtherNode);
 			const FVector RoadDirection = (OtherPosition - CenterPosition).GetSafeNormal();
 			double Radius = Processor->GetSettings()->PolygonRadius;
@@ -245,33 +246,45 @@ namespace PCGExClusterToZoneGraph
 		TMap<int32, TSharedPtr<FZGPolygon>> Map;
 		TSharedPtr<FProcessor> This = SharedThis(this);
 
+		PCGEx::FIndexLookup& Idx = *Cluster->NodeIndexLookup.Get();
+
 		const int32 NumChains = ChainBuilder->Chains.Num();
 		for (int i = 0; i < NumChains; i++)
 		{
 			TSharedPtr<PCGExCluster::FNodeChain> Chain = ChainBuilder->Chains[i];
 			if (!Chain) { continue; }
 
-			if (Chain->SingleEdge != -1) { continue; } // TODO : Handle single-edge chain
+			int32 StartNode = -1;
+			int32 EndNode = -1;
+			bool bReverse = false;
 
-			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, Chain->Seed.Node, Chain->Links.Last().Node);
+			StartNode = Chain->Seed.Node;
+			EndNode = Chain->Links.Last().Node;
+
+			bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, StartNode, EndNode);
+
+
 			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain, bReverse);
 			Roads.Add(Road);
 
-			const PCGExCluster::FNode* Start = Cluster->GetNode(Chain->Seed.Node);
-			const PCGExCluster::FNode* End = Cluster->GetNode(Chain->Links.Last().Node);
+			const PCGExCluster::FNode* Start = Cluster->GetNode(StartNode);
+			const PCGExCluster::FNode* End = Cluster->GetNode(EndNode);
 
-
-			if (Chain->bIsClosedLoop && Start->IsBinary() && End->IsBinary()) { continue; } // Roaming closed loop
+			if (Chain->bIsClosedLoop && Start->IsBinary() && End->IsBinary())
+			{
+				// Roaming closed loop, road only!
+				continue;
+			}
 
 			if (!Start->IsLeaf())
 			{
-				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(Start->Index);
+				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(StartNode);
 
 				if (!PolygonPtr)
 				{
 					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, Start);
 					Polygons.Add(NewPolygon);
-					Map.Add(Start->Index, NewPolygon);
+					Map.Add(StartNode, NewPolygon);
 					PolygonPtr = &NewPolygon;
 				}
 				(*PolygonPtr)->Add(Road, true);
@@ -279,13 +292,13 @@ namespace PCGExClusterToZoneGraph
 
 			if (!End->IsLeaf())
 			{
-				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(End->Index);
+				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(EndNode);
 
 				if (!PolygonPtr)
 				{
 					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, End);
 					Polygons.Add(NewPolygon);
-					Map.Add(End->Index, NewPolygon);
+					Map.Add(EndNode, NewPolygon);
 					PolygonPtr = &NewPolygon;
 				}
 
