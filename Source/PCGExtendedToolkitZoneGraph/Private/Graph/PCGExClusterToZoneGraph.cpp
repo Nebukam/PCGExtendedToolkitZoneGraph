@@ -156,6 +156,7 @@ namespace PCGExClusterToZoneGraph
 	{
 		Component->SetShapeType(FZoneShapeType::Polygon);
 		Component->SetPolygonRoutingType(Processor->GetSettings()->PolygonRoutingType);
+		Component->SetTags(Component->GetTags() | Processor->GetSettings()->AdditionalIntersectionTags);
 
 		const PCGExCluster::FNode* Center = Cluster->GetNode(NodeIndex);
 		const FVector CenterPosition = Cluster->GetPos(Center);
@@ -202,6 +203,7 @@ namespace PCGExClusterToZoneGraph
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * Radius);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
 			ShapePoint.Type = Processor->GetSettings()->PolygonPointType;
+			
 
 			MutablePoints[i] = ShapePoint;
 		}

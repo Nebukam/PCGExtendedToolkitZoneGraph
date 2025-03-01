@@ -8,10 +8,9 @@
 #include "Graph/PCGExChain.h"
 #include "Graph/PCGExEdgesProcessor.h"
 #include "Transform/PCGExTransform.h"
+#include "ZoneShapeComponent.h"
 
 #include "PCGExClusterToZoneGraph.generated.h"
-
-class UZoneShapeComponent;
 
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters")
 class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
@@ -62,6 +61,9 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FZoneShapePointType RoadPointType = FZoneShapePointType::LaneProfile;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Intersections")
+	FZoneGraphTagMask AdditionalIntersectionTags = FZoneGraphTagMask::None;
 
 private:
 	friend class FPCGExClusterToZoneGraphElement;
