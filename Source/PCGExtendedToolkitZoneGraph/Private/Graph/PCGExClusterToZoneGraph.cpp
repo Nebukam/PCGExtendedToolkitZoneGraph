@@ -95,6 +95,7 @@ namespace PCGExClusterToZoneGraph
 	void FZGRoad::Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster)
 	{
 		Component->SetShapeType(FZoneShapeType::Spline);
+		Component->SetCommonLaneProfile(Processor->GetSettings()->LaneProfile);
 
 		TArray<int32> Nodes;
 		const int32 ChainSize = Chain->GetNodes(Cluster, Nodes, bIsReversed);
@@ -157,6 +158,7 @@ namespace PCGExClusterToZoneGraph
 		Component->SetShapeType(FZoneShapeType::Polygon);
 		Component->SetPolygonRoutingType(Processor->GetSettings()->PolygonRoutingType);
 		Component->SetTags(Component->GetTags() | Processor->GetSettings()->AdditionalIntersectionTags);
+		Component->SetCommonLaneProfile(Processor->GetSettings()->LaneProfile);
 
 		const PCGExCluster::FNode* Center = Cluster->GetNode(NodeIndex);
 		const FVector CenterPosition = Cluster->GetPos(Center);
