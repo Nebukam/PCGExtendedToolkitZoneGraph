@@ -10,6 +10,7 @@
 #include "Graph/PCGExEdgesProcessor.h"
 #include "Transform/PCGExTransform.h"
 #include "ZoneShapeComponent.h"
+#include "Graph/Filters/PCGExClusterFilter.h"
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
@@ -47,6 +48,7 @@ public:
 	virtual bool SupportsEdgeSorting() const override { return DirectionSettings.RequiresSortingRules(); }
 	virtual PCGExData::EIOInit GetMainOutputInitMode() const override;
 	virtual PCGExData::EIOInit GetEdgeOutputInitMode() const override;
+	PCGEX_NODE_POINT_FILTER(FName("Break Conditions"), "Filters used to know which points are 'break' points. Use those if you want to create more polygon shapes.", PCGExFactories::ClusterNodeFilters, false)
 	//~End UPCGExPointsProcessorSettings
 
 	/** Defines the direction in which points will be ordered to form the final paths. */
@@ -167,6 +169,8 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<TArray<FVector2D>> ProjectedPositions;
 		TSharedPtr<PCGExCluster::FNodeChainBuilder> ChainBuilder;
 
+		TSharedPtr<PCGExClusterFilter::FManager> BreakpointFilterManager;
+
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TArray<TSharedPtr<FZGPolygon>> Polygons;
 
@@ -182,6 +186,7 @@ namespace PCGExClusterToZoneGraph
 		virtual bool IsTrivial() const override { return false; }
 
 		virtual bool Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager) override;
+		bool BuildChains();
 		virtual void CompleteWork() override;
 		void InitComponents();
 		void OnPolygonsCompilationComplete();

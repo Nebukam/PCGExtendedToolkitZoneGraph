@@ -133,6 +133,7 @@ namespace PCGExClusterToZoneGraph
 
 		if (!Chain->bIsClosedLoop)
 		{
+			// TODO : Add redundant first point to close the loop
 		}
 		else
 		{
@@ -205,7 +206,7 @@ namespace PCGExClusterToZoneGraph
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * Radius);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
 			ShapePoint.Type = Processor->GetSettings()->PolygonPointType;
-			
+
 
 			MutablePoints[i] = ShapePoint;
 		}
@@ -221,6 +222,46 @@ namespace PCGExClusterToZoneGraph
 
 		if (!DirectionSettings.InitFromParent(ExecutionContext, StaticCastWeakPtr<FBatch>(ParentBatch).Pin()->DirectionSettings, EdgeDataFacade)) { return false; }
 
+		if (!Context->FilterFactories.IsEmpty())
+		{
+			// Process breakpoint filters
+			BreakpointFilterManager = MakeShared<PCGExClusterFilter::FManager>(Cluster.ToSharedRef(), VtxDataFacade, EdgeDataFacade);
+			if (!BreakpointFilterManager->Init(ExecutionContext, Context->FilterFactories)) { return false; }
+
+			PCGEX_ASYNC_GROUP_CHKD(AsyncManager, FilterBreakpoints)
+
+			FilterBreakpoints->OnCompleteCallback =
+				[PCGEX_ASYNC_THIS_CAPTURE]()
+				{
+					PCGEX_ASYNC_THIS
+					This->BreakpointFilterManager.Reset();
+					This->BuildChains();
+				};
+
+			FilterBreakpoints->OnSubLoopStartCallback =
+				[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
+				{
+					PCGEX_ASYNC_THIS
+					TArray<int8>& Breaks = *This->Breakpoints;
+					for (int i = Scope.Start; i < Scope.End; i++)
+					{
+						const PCGExCluster::FNode* Node = This->Cluster->GetNode(i);
+						Breaks[Node->PointIndex] = This->BreakpointFilterManager->Test(*Node);
+					}
+				};
+
+			FilterBreakpoints->StartSubLoops(NumNodes, GetDefault<UPCGExGlobalSettings>()->GetClusterBatchChunkSize());
+		}
+		else
+		{
+			return BuildChains();
+		}
+
+		return true;
+	}
+
+	bool FProcessor::BuildChains()
+	{
 		ChainBuilder = MakeShared<PCGExCluster::FNodeChainBuilder>(Cluster.ToSharedRef());
 		ChainBuilder->Breakpoints = Breakpoints;
 		bIsProcessorValid = ChainBuilder->Compile(AsyncManager);
@@ -229,7 +270,7 @@ namespace PCGExClusterToZoneGraph
 
 		Polygons.Reserve(NumNodes / 2);
 
-		return true;
+		return bIsProcessorValid;
 	}
 
 
@@ -394,12 +435,14 @@ namespace PCGExClusterToZoneGraph
 		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
 		Roads.Empty();
 		Polygons.Empty();
+		BreakpointFilterManager.Reset();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
 	{
 		TBatch<FProcessor>::RegisterBuffersDependencies(FacadePreloader);
 		PCGEX_TYPED_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
+		PCGExPointFilter::RegisterBuffersDependencies(ExecutionContext, Context->FilterFactories, FacadePreloader);
 		DirectionSettings.RegisterBuffersDependencies(ExecutionContext, FacadePreloader);
 	}
 
