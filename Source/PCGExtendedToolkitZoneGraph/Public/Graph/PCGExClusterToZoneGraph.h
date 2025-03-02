@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ZoneGraphSettings.h"
 #include "ZoneGraphTypes.h"
 #include "Graph/PCGExChain.h"
 #include "Graph/PCGExEdgesProcessor.h"
@@ -18,6 +19,19 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
 	GENERATED_BODY()
 
 public:
+
+#if WITH_EDITOR
+	UPCGExClusterToZoneGraphSettings() {
+		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
+		{
+			if (const FZoneLaneProfile* NewLaneProfile = ZoneGraphSettings->GetDefaultLaneProfile())
+			{
+				LaneProfile = *NewLaneProfile;
+			}
+		}
+	}
+#endif
+	
 	//~Begin UPCGSettings
 #if WITH_EDITOR
 	PCGEX_NODE_INFOS(ClusterToZoneGraph, "Cluster to Zone Graph", "Create Zone Graph from clusters.");
@@ -64,6 +78,11 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Intersections")
 	FZoneGraphTagMask AdditionalIntersectionTags = FZoneGraphTagMask::None;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings")
+	FZoneLaneProfileRef LaneProfile;
+
+	
 
 private:
 	friend class FPCGExClusterToZoneGraphElement;
