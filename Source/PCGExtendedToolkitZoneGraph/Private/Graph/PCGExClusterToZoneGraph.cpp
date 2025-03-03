@@ -103,6 +103,12 @@ namespace PCGExClusterToZoneGraph
 		TArray<FZoneShapePoint>& MutablePoints = Component->GetMutablePoints();
 		PCGEx::InitArray(MutablePoints, ChainSize);
 
+		if (Chain->bIsClosedLoop)
+		{
+			// Redundant last point
+			Nodes.Add(Nodes.Last());
+		}
+
 		for (int i = 0; i < ChainSize; i++)
 		{
 			const PCGExCluster::FNode* Node = Cluster->GetNode(Nodes[i]);
@@ -128,15 +134,18 @@ namespace PCGExClusterToZoneGraph
 			MutablePoints[i] = ShapePoint;
 		}
 
-		MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius;
-		MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius;
-
 		if (!Chain->bIsClosedLoop)
 		{
-			// TODO : Add redundant first point to close the loop
-		}
-		else
-		{
+			if (bIsReversed)
+			{
+				if (!Cluster->GetNode(Nodes[0])->IsLeaf()) { MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius; }
+				if (!Cluster->GetNode(Nodes.Last())->IsLeaf()) { MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; }
+			}
+			else
+			{
+				if (!Cluster->GetNode(Nodes[0])->IsLeaf()) { MutablePoints[0].Position += MutablePoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; }
+				if (!Cluster->GetNode(Nodes.Last())->IsLeaf()) { MutablePoints.Last().Position += MutablePoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius; }
+			}
 		}
 
 		Component->UpdateShape();
@@ -206,7 +215,6 @@ namespace PCGExClusterToZoneGraph
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * Radius);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
 			ShapePoint.Type = Processor->GetSettings()->PolygonPointType;
-
 
 			MutablePoints[i] = ShapePoint;
 		}
