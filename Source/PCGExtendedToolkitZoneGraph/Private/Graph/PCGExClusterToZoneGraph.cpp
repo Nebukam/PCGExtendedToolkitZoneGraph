@@ -59,6 +59,7 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 
 	Context->OutputBatches();
 	Context->OutputPointsAndEdges();
+	Context->ExecuteOnNotifyActors(Settings->PostProcessFunctionNames);
 
 	return Context->TryComplete();
 }
@@ -435,7 +436,7 @@ namespace PCGExClusterToZoneGraph
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules); }
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Context->AttachManagedComponent(TargetActor, Road->Component, AttachmentRules); }
 
-		Context->NotifyActors.Add(TargetActor);
+		Context->AddNotifyActor(TargetActor);
 	}
 
 	void FProcessor::Cleanup()

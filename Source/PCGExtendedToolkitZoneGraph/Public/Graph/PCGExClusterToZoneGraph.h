@@ -96,7 +96,6 @@ struct FPCGExClusterToZoneGraphContext final : FPCGExEdgesProcessorContext
 	TArray<TSharedPtr<PCGExCluster::FNodeChain>> Chains;
 
 	TArray<FString> ComponentTags;
-	TSet<AActor*> NotifyActors;
 };
 
 class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
