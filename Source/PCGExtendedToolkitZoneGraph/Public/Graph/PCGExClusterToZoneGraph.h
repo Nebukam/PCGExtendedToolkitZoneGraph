@@ -164,11 +164,8 @@ namespace PCGExClusterToZoneGraph
 
 		TWeakPtr<PCGExMT::FAsyncToken> MainThreadToken;
 
-		TSharedPtr<TArray<int8>> Breakpoints;
 		TSharedPtr<TArray<FVector2D>> ProjectedPositions;
 		TSharedPtr<PCGExCluster::FNodeChainBuilder> ChainBuilder;
-
-		TSharedPtr<PCGExClusterFilter::FManager> BreakpointFilterManager;
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TArray<TSharedPtr<FZGPolygon>> Polygons;
@@ -210,11 +207,10 @@ namespace PCGExClusterToZoneGraph
 			TBatch(InContext, InVtx, InEdges)
 		{
 			bAllowVtxDataFacadeScopedGet = true;
+			DefaultVtxFilterValue = false;
 		}
 
 		virtual void RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader) override;
-		virtual void Process() override;
-		virtual bool PrepareSingle(const TSharedPtr<FProcessor>& ClusterProcessor) override;
 		virtual void OnProcessingPreparationComplete() override;
 	};
 }

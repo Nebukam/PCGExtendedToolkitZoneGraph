@@ -3,6 +3,7 @@
 
 #include "Graph/PCGExClusterToZoneGraph.h"
 
+#include "PCGExtendedToolkit.h"
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
 #include "Graph/PCGExChain.h"
@@ -49,6 +50,7 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 			[&](const TSharedPtr<PCGExClusterToZoneGraph::FBatch>& NewBatch)
 			{
 				NewBatch->bRequiresWriteStep = true; // Not really but we need the step
+				NewBatch->VtxFilterFactories = &Context->FilterFactories;
 			}))
 		{
 			return Context->CancelExecution(TEXT("Could not build any clusters."));
@@ -229,21 +231,16 @@ namespace PCGExClusterToZoneGraph
 
 		if (!FClusterProcessor::Process(InAsyncManager)) { return false; }
 
-		if (!DirectionSettings.InitFromParent(ExecutionContext, StaticCastWeakPtr<FBatch>(ParentBatch).Pin()->DirectionSettings, EdgeDataFacade)) { return false; }
+		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
 
-		if (!Context->FilterFactories.IsEmpty())
+		if (VtxFiltersManager)
 		{
-			// Process breakpoint filters
-			BreakpointFilterManager = MakeShared<PCGExClusterFilter::FManager>(Cluster.ToSharedRef(), VtxDataFacade, EdgeDataFacade);
-			if (!BreakpointFilterManager->Init(ExecutionContext, Context->FilterFactories)) { return false; }
-
 			PCGEX_ASYNC_GROUP_CHKD(AsyncManager, FilterBreakpoints)
 
 			FilterBreakpoints->OnCompleteCallback =
 				[PCGEX_ASYNC_THIS_CAPTURE]()
 				{
 					PCGEX_ASYNC_THIS
-					This->BreakpointFilterManager.Reset();
 					This->BuildChains();
 				};
 
@@ -251,12 +248,7 @@ namespace PCGExClusterToZoneGraph
 				[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
 				{
 					PCGEX_ASYNC_THIS
-					TArray<int8>& Breaks = *This->Breakpoints;
-					for (int i = Scope.Start; i < Scope.End; i++)
-					{
-						const PCGExCluster::FNode* Node = This->Cluster->GetNode(i);
-						Breaks[Node->PointIndex] = This->BreakpointFilterManager->Test(*Node);
-					}
+					This->FilterVtxScope(Scope);
 				};
 
 			FilterBreakpoints->StartSubLoops(NumNodes, GetDefault<UPCGExGlobalSettings>()->GetClusterBatchChunkSize());
@@ -272,7 +264,7 @@ namespace PCGExClusterToZoneGraph
 	bool FProcessor::BuildChains()
 	{
 		ChainBuilder = MakeShared<PCGExCluster::FNodeChainBuilder>(Cluster.ToSharedRef());
-		ChainBuilder->Breakpoints = Breakpoints;
+		ChainBuilder->Breakpoints = VtxFilterCache;
 		bIsProcessorValid = ChainBuilder->Compile(AsyncManager);
 
 		if (!bIsProcessorValid) { return false; }
@@ -444,14 +436,12 @@ namespace PCGExClusterToZoneGraph
 		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
 		Roads.Empty();
 		Polygons.Empty();
-		BreakpointFilterManager.Reset();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
 	{
 		TBatch<FProcessor>::RegisterBuffersDependencies(FacadePreloader);
 		PCGEX_TYPED_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
-		PCGExPointFilter::RegisterBuffersDependencies(ExecutionContext, Context->FilterFactories, FacadePreloader);
 		DirectionSettings.RegisterBuffersDependencies(ExecutionContext, FacadePreloader);
 	}
 
@@ -467,23 +457,6 @@ namespace PCGExClusterToZoneGraph
 		}
 
 		TBatch<FProcessor>::OnProcessingPreparationComplete();
-	}
-
-	void FBatch::Process()
-	{
-		PCGEX_TYPED_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
-
-		const int32 NumPoints = VtxDataFacade->GetNum();
-		Breakpoints = MakeShared<TArray<int8>>();
-		Breakpoints->Init(false, NumPoints);
-
-		TBatch<FProcessor>::Process();
-	}
-
-	bool FBatch::PrepareSingle(const TSharedPtr<FProcessor>& ClusterProcessor)
-	{
-		ClusterProcessor->Breakpoints = Breakpoints;
-		return TBatch<FProcessor>::PrepareSingle(ClusterProcessor);
 	}
 }
 
