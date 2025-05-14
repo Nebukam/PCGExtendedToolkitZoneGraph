@@ -101,11 +101,7 @@ struct FPCGExClusterToZoneGraphContext final : FPCGExEdgesProcessorContext
 class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
 {
 public:
-	virtual FPCGContext* Initialize(
-		const FPCGDataCollection& InputData,
-		TWeakObjectPtr<UPCGComponent> SourceComponent,
-		const UPCGNode* Node) override;
-
+	virtual FPCGContext* Initialize(const FPCGInitializeElementParams& InParams) override;
 	PCGEX_CAN_ONLY_EXECUTE_ON_MAIN_THREAD(true)
 
 protected:

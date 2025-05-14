@@ -24,9 +24,9 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 
 	if (!FPCGExEdgesProcessorElement::Boot(InContext)) { return false; }
 
-	if (InContext->SourceComponent.IsValid())
+	if (const UPCGComponent* PCGComponent = InContext->GetComponent())
 	{
-		if (InContext->SourceComponent->GenerationTrigger == EPCGComponentGenerationTrigger::GenerateAtRuntime)
+		if (PCGComponent->GenerationTrigger == EPCGComponentGenerationTrigger::GenerateAtRuntime)
 		{
 			PCGE_LOG_C(Error, GraphAndLog, Context, FTEXT("Zone Graph PCG Nodes should not be used in runtime-generated PCG components."));
 			return false;
@@ -83,7 +83,7 @@ namespace PCGExClusterToZoneGraph
 
 		// This executes on the main thread for safety
 		const FString ComponentName = TEXT("PCGZoneGraphComponent");
-		const EObjectFlags ObjectFlags = (Processor->GetContext()->SourceComponent.Get()->IsInPreviewMode() ? RF_Transient : RF_NoFlags);
+		const EObjectFlags ObjectFlags = (Processor->GetContext()->GetComponent()->IsInPreviewMode() ? RF_Transient : RF_NoFlags);
 		Component = Processor->GetContext()->ManagedObjects->New<UZoneShapeComponent>(InTargetActor, MakeUniqueObjectName(InTargetActor, UZoneShapeComponent::StaticClass(), FName(ComponentName)), ObjectFlags);
 
 		Component->ComponentTags.Reserve(Component->ComponentTags.Num() + Processor->GetContext()->ComponentTags.Num());
