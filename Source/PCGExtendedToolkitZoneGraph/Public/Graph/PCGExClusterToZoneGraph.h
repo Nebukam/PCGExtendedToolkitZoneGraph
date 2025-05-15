@@ -100,11 +100,11 @@ struct FPCGExClusterToZoneGraphContext final : FPCGExEdgesProcessorContext
 
 class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
 {
-public:
-	virtual FPCGContext* Initialize(const FPCGInitializeElementParams& InParams) override;
+protected:
 	PCGEX_CAN_ONLY_EXECUTE_ON_MAIN_THREAD(true)
 
-protected:
+	PCGEX_ELEMENT_CREATE_CONTEXT(ClusterToZoneGraph)
+	
 	virtual bool Boot(FPCGExContext* InContext) const override;
 	virtual bool ExecuteInternal(FPCGContext* InContext) const override;
 };
