@@ -182,7 +182,7 @@ namespace PCGExClusterToZoneGraph
 		virtual void CompleteWork() override;
 		void InitComponents();
 		void OnPolygonsCompilationComplete();
-		virtual void ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope) override;
+		virtual void ProcessRange(const PCGExMT::FScope& Scope) override;
 		virtual void OnRangeProcessingComplete() override;
 
 		virtual void Output() override;
