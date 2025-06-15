@@ -387,7 +387,7 @@ namespace PCGExClusterToZoneGraph
 			[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
 			{
 				PCGEX_ASYNC_THIS
-				for (int i = Scope.Start; i < Scope.End; i++) { This->Polygons[i]->Compile(This->Cluster); }
+				PCGEX_SCOPE_LOOP(i) { This->Polygons[i]->Compile(This->Cluster); }
 			};
 
 		CompileIntersections->StartSubLoops(Polygons.Num(), 32);
@@ -399,10 +399,13 @@ namespace PCGExClusterToZoneGraph
 		StartParallelLoopForRange(Roads.Num(), 32);
 	}
 
-	void FProcessor::ProcessSingleRangeIteration(const int32 Iteration, const PCGExMT::FScope& Scope)
+	void FProcessor::ProcessRange(const PCGExMT::FScope& Scope)
 	{
-		// Compile road, after polygons -- since polygons will feed road their start/end offset
-		Roads[Iteration]->Compile(Cluster);
+		PCGEX_SCOPE_LOOP(Index)
+		{
+			// Compile road, after polygons -- since polygons will feed road their start/end offset
+			Roads[Index]->Compile(Cluster);
+		}
 	}
 
 	void FProcessor::OnRangeProcessingComplete()
