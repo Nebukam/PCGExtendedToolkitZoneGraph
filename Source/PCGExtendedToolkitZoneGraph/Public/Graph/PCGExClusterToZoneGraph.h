@@ -22,7 +22,7 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
 public:
 
 #if WITH_EDITOR
-	UPCGExClusterToZoneGraphSettings() {
+	UPCGExClusterToZoneGraphSettings(const FVTableHelper& Helper) {
 		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
 		{
 			if (const FZoneLaneProfile* NewLaneProfile = ZoneGraphSettings->GetDefaultLaneProfile())
