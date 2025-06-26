@@ -1,7 +1,7 @@
 ![UE 5.6](https://img.shields.io/badge/UE-5.6-darkgreen) ![5.5](https://img.shields.io/badge/5.5-darkgreen) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Nebukam/PCGExtendedToolkit)
 # PCG Extended Toolkit : Zone Graph
 
-![PCGEx](/Resources/Icon128.png)
+![PCGEx](https://raw.githubusercontent.com/Nebukam/PCGExtendedToolkit/refs/heads/docs/_sources/smol-logo.png)
 
 ## Purpose of Plugin
 
