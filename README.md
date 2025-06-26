@@ -11,7 +11,7 @@ PCGExtendedToolkitZoneGraph provides a single PCG Element node, PCGExClusterToZo
 
 ## EXPERIMENTAL Status
 
-Both PCGExtendedToolkitZoneGraph (this plugin) and the ZoneGraph plugin on which it relies are **experimental** code. Epic Games warns "ZoneGraph is currently an experimental plugin that will have API breaking changes as its development progresses towards a full release in later engine versions." Additionally, PCGExtendedToolkit is released but is under active development as well. Given these factors, PCGExtendedToolkitZoneGraph should be approached carefully and is not recommended for shipping products.
+Both PCGExtendedToolkitZoneGraph (this plugin) and the ZoneGraph plugin on which it relies are **experimental** code. Epic Games warns "ZoneGraph is currently an experimental plugin that will have API breaking changes as its development progresses towards a full release in later engine versions." PCGExtendedToolkit is released but is under active development as well. Given these factors, PCGExtendedToolkitZoneGraph should be approached carefully and is not recommended for shipping products.
 
 ## Getting Started
 
@@ -25,3 +25,4 @@ Once the two prerequisite plugins are enabled and the Unreal Editor restarts wit
 
 
 For questions & support, join the [PCGEx Discord Server](https://discord.gg/mde2vC5gbE)!
+
