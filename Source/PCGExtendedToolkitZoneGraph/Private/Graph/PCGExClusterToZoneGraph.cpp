@@ -229,7 +229,7 @@ namespace PCGExClusterToZoneGraph
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(PCGExClusterToZoneGraph::Process);
 
-		if (!FClusterProcessor::Process(InAsyncManager)) { return false; }
+		if (!IClusterProcessor::Process(InAsyncManager)) { return false; }
 
 		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
 
