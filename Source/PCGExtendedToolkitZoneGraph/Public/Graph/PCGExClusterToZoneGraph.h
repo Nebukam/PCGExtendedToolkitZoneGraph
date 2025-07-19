@@ -20,9 +20,9 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
 	GENERATED_BODY()
 
 public:
-
 #if WITH_EDITOR
-	UPCGExClusterToZoneGraphSettings() {
+	UPCGExClusterToZoneGraphSettings()
+	{
 		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
 		{
 			if (const FZoneLaneProfile* NewLaneProfile = ZoneGraphSettings->GetDefaultLaneProfile())
@@ -32,7 +32,7 @@ public:
 		}
 	}
 #endif
-	
+
 	//~Begin UPCGSettings
 #if WITH_EDITOR
 	PCGEX_NODE_INFOS(ClusterToZoneGraph, "Cluster to Zone Graph", "Create Zone Graph from clusters.");
@@ -84,8 +84,6 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings")
 	FZoneLaneProfileRef LaneProfile;
 
-	
-
 private:
 	friend class FPCGExClusterToZoneGraphElement;
 };
@@ -102,10 +100,10 @@ class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
 {
 protected:
 	PCGEX_ELEMENT_CREATE_CONTEXT(ClusterToZoneGraph)
-	
+
 	virtual bool Boot(FPCGExContext* InContext) const override;
 	virtual bool ExecuteInternal(FPCGContext* InContext) const override;
-	
+
 	virtual bool CanExecuteOnlyOnMainThread(FPCGContext* Context) const override { return true; }
 };
 
@@ -160,7 +158,6 @@ namespace PCGExClusterToZoneGraph
 
 		TWeakPtr<PCGExMT::FAsyncToken> MainThreadToken;
 
-		TSharedPtr<TArray<FVector2D>> ProjectedPositions;
 		TSharedPtr<PCGExCluster::FNodeChainBuilder> ChainBuilder;
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
@@ -177,7 +174,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual bool IsTrivial() const override { return false; }
 
-		virtual bool Process(TSharedPtr<PCGExMT::FTaskManager> InAsyncManager) override;
+		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InAsyncManager) override;
 		bool BuildChains();
 		virtual void CompleteWork() override;
 		void InitComponents();
