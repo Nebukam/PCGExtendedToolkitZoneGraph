@@ -18,6 +18,7 @@ PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() con
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 
 PCGEX_INITIALIZE_ELEMENT(ClusterToZoneGraph)
+PCGEX_ELEMENT_BATCH_EDGE_IMPL_ADV(ClusterToZoneGraph)
 
 bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 {
@@ -46,9 +47,9 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 	PCGEX_EXECUTION_CHECK
 	PCGEX_ON_INITIAL_EXECUTION
 	{
-		if (!Context->StartProcessingClusters<PCGExClusterToZoneGraph::FBatch>(
+		if (!Context->StartProcessingClusters(
 			[](const TSharedPtr<PCGExData::FPointIOTaggedEntries>& Entries) { return true; },
-			[&](const TSharedPtr<PCGExClusterToZoneGraph::FBatch>& NewBatch)
+			[&](const TSharedPtr<PCGExClusterMT::IBatch>& NewBatch)
 			{
 				NewBatch->bRequiresWriteStep = true; // Not really but we need the step
 				NewBatch->VtxFilterFactories = &Context->FilterFactories;
