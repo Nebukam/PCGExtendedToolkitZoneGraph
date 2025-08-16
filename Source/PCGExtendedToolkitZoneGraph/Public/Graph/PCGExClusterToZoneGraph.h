@@ -94,6 +94,9 @@ struct FPCGExClusterToZoneGraphContext final : FPCGExEdgesProcessorContext
 	TArray<TSharedPtr<PCGExCluster::FNodeChain>> Chains;
 
 	TArray<FString> ComponentTags;
+
+protected:
+	PCGEX_ELEMENT_BATCH_EDGE_DECL
 };
 
 class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
