@@ -7,8 +7,8 @@
 
 #include "PCGExZoneGraphGlobalSettings.generated.h"
 
-UCLASS(DefaultConfig, config = Editor, defaultconfig)
-class PCGEXTENDEDTOOLKITZONEGRAPH_API UPCGExZoneGraphGlobalSettings : public UObject
+UCLASS(Config=Game, DefaultConfig, meta=(DisplayName="PCGEx + ZoneGraph", Description="Configure PCGEx + ZoneGraph settings"))
+class PCGEXTENDEDTOOLKITZONEGRAPH_API UPCGExZoneGraphGlobalSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
