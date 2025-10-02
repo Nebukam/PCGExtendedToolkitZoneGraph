@@ -7,6 +7,7 @@
 #endif
 
 #include "PCGExGlobalSettings.h"
+#include "PCGExZoneGraphGlobalSettings.h"
 
 #define LOCTEXT_NAMESPACE "FPCGExtendedToolkitZoneGraphModule"
 
@@ -20,7 +21,7 @@ void FPCGExtendedToolkitZoneGraphModule::StartupModule()
 				"Project", "Plugins", "PCGEx",
 				LOCTEXT("PCGExDetailsName", "PCGEx + ZoneGraph"),
 				LOCTEXT("PCGExDetailsDescription", "Configure PCG Extended Toolkit + Zone Graph settings"),
-				GetMutableDefault<UPCGExGlobalSettings>()
+				GetMutableDefault<UPCGExZoneGraphGlobalSettings>()
 			);
 	}
 #endif
