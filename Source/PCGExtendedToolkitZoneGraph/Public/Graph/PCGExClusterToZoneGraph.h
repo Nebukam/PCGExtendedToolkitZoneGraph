@@ -31,6 +31,11 @@ public:
 			}
 		}
 	}
+#else
+	UPCGExClusterToZoneGraphSettings()
+	{
+		
+	}
 #endif
 
 	//~Begin UPCGSettings
