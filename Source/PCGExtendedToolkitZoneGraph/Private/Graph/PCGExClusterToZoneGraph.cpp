@@ -111,7 +111,8 @@ namespace PCGExClusterToZoneGraph
 		if (Chain->bIsClosedLoop)
 		{
 			// Redundant last point
-			Nodes.Add(Nodes.Last());
+			const int32 LastNodeIndex = Nodes.Last();
+			Nodes.Add(LastNodeIndex);
 		}
 
 		for (int i = 0; i < ChainSize; i++)
