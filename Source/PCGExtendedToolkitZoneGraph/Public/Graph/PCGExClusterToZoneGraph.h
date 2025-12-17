@@ -14,6 +14,11 @@
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
+namespace PCGExMT
+{
+	class FAsyncToken;
+}
+
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters")
 class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
 {
@@ -182,7 +187,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual bool IsTrivial() const override { return false; }
 
-		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InAsyncManager) override;
+		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager) override;
 		bool BuildChains();
 		virtual void CompleteWork() override;
 		void InitComponents();

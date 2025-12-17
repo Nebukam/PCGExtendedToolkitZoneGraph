@@ -4,6 +4,7 @@
 #include "Graph/PCGExClusterToZoneGraph.h"
 
 #include "PCGComponent.h"
+#include "PCGExMT.h"
 #include "PCGExtendedToolkit.h"
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
@@ -228,17 +229,17 @@ namespace PCGExClusterToZoneGraph
 		Component->UpdateShape();
 	}
 
-	bool FProcessor::Process(const TSharedPtr<PCGExMT::FTaskManager>& InAsyncManager)
+	bool FProcessor::Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager)
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(PCGExClusterToZoneGraph::Process);
 
-		if (!IProcessor::Process(InAsyncManager)) { return false; }
+		if (!IProcessor::Process(InTaskManager)) { return false; }
 
 		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
 
 		if (VtxFiltersManager)
 		{
-			PCGEX_ASYNC_GROUP_CHKD(AsyncManager, FilterBreakpoints)
+			PCGEX_ASYNC_GROUP_CHKD(TaskManager, FilterBreakpoints)
 
 			FilterBreakpoints->OnCompleteCallback =
 				[PCGEX_ASYNC_THIS_CAPTURE]()
@@ -268,7 +269,7 @@ namespace PCGExClusterToZoneGraph
 	{
 		ChainBuilder = MakeShared<PCGExCluster::FNodeChainBuilder>(Cluster.ToSharedRef());
 		ChainBuilder->Breakpoints = VtxFilterCache;
-		bIsProcessorValid = ChainBuilder->Compile(AsyncManager);
+		bIsProcessorValid = ChainBuilder->Compile(TaskManager);
 
 		if (!bIsProcessorValid) { return false; }
 
@@ -349,7 +350,7 @@ namespace PCGExClusterToZoneGraph
 
 		ChainBuilder.Reset();
 
-		MainThreadToken = AsyncManager->TryCreateToken(TEXT("ZGMainThreadToken"));
+		MainThreadToken = TaskManager->TryCreateToken(TEXT("ZGMainThreadToken"));
 
 		PCGEX_SUBSYSTEM
 		PCGExSubsystem->RegisterBeginTickAction(
@@ -377,7 +378,7 @@ namespace PCGExClusterToZoneGraph
 
 		// Dispatch async polygon processing
 
-		PCGEX_ASYNC_GROUP_CHKD_VOID(AsyncManager, CompileIntersections)
+		PCGEX_ASYNC_GROUP_CHKD_VOID(TaskManager, CompileIntersections)
 
 		CompileIntersections->OnCompleteCallback =
 			[PCGEX_ASYNC_THIS_CAPTURE]()
