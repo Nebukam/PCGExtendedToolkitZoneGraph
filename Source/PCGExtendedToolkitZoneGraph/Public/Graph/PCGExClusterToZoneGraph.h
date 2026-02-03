@@ -4,18 +4,28 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PCGExGlobalSettings.h"
 #include "ZoneGraphSettings.h"
 #include "ZoneGraphTypes.h"
-#include "Graph/PCGExChain.h"
-#include "Graph/PCGExEdgesProcessor.h"
-#include "Transform/PCGExTransform.h"
 #include "ZoneShapeComponent.h"
-#include "Graph/Filters/PCGExClusterFilter.h"
+#include "Core/PCGExClustersProcessor.h"
+#include "Details/PCGExAttachmentRules.h"
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
+namespace PCGExClusters
+{
+	class FNodeChainBuilder;
+	class FNodeChain;
+}
+
+namespace PCGExMT
+{
+	class FAsyncToken;
+}
+
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters")
-class UPCGExClusterToZoneGraphSettings : public UPCGExEdgesProcessorSettings
+class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 {
 	GENERATED_BODY()
 
@@ -93,10 +103,10 @@ private:
 	friend class FPCGExClusterToZoneGraphElement;
 };
 
-struct FPCGExClusterToZoneGraphContext final : FPCGExEdgesProcessorContext
+struct FPCGExClusterToZoneGraphContext final : FPCGExClustersProcessorContext
 {
 	friend class FPCGExClusterToZoneGraphElement;
-	TArray<TSharedPtr<PCGExCluster::FNodeChain>> Chains;
+	TArray<TSharedPtr<PCGExClusters::FNodeChain>> Chains;
 
 	TArray<FString> ComponentTags;
 
@@ -104,7 +114,7 @@ protected:
 	PCGEX_ELEMENT_BATCH_EDGE_DECL
 };
 
-class FPCGExClusterToZoneGraphElement final : public FPCGExEdgesProcessorElement
+class FPCGExClusterToZoneGraphElement final : public FPCGExClustersProcessorElement
 {
 protected:
 	PCGEX_ELEMENT_CREATE_CONTEXT(ClusterToZoneGraph)
@@ -136,11 +146,11 @@ namespace PCGExClusterToZoneGraph
 	class FZGRoad : public FZGBase
 	{
 	public:
-		TSharedPtr<PCGExCluster::FNodeChain> Chain;
+		TSharedPtr<PCGExClusters::FNodeChain> Chain;
 		bool bIsReversed = false;
 
-		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExCluster::FNodeChain>& InChain, const bool InReverse);
-		void Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster);
+		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
+		void Compile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 	};
 
 	class FZGPolygon : public FZGBase
@@ -151,10 +161,10 @@ namespace PCGExClusterToZoneGraph
 
 	public:
 		int32 NodeIndex = -1;
-		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExCluster::FNode* InNode);
+		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExClusters::FNode* InNode);
 
 		void Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart);
-		void Compile(const TSharedPtr<PCGExCluster::FCluster>& Cluster);
+		void Compile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 	};
 
 	class FProcessor final : public PCGExClusterMT::TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>
@@ -166,7 +176,7 @@ namespace PCGExClusterToZoneGraph
 
 		TWeakPtr<PCGExMT::FAsyncToken> MainThreadToken;
 
-		TSharedPtr<PCGExCluster::FNodeChainBuilder> ChainBuilder;
+		TSharedPtr<PCGExClusters::FNodeChainBuilder> ChainBuilder;
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TArray<TSharedPtr<FZGPolygon>> Polygons;
