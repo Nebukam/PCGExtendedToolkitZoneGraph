@@ -192,7 +192,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual bool IsTrivial() const override { return false; }
 
-		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InAsyncManager) override;
+		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager) override;
 		bool BuildChains();
 		virtual void CompleteWork() override;
 		void InitComponents();
