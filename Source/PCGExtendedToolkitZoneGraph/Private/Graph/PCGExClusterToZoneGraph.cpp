@@ -4,7 +4,6 @@
 #include "Graph/PCGExClusterToZoneGraph.h"
 
 #include "PCGComponent.h"
-#include "PCGExtendedToolkit.h"
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
 #include "Clusters/PCGExCluster.h"
