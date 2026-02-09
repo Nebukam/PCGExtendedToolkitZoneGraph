@@ -37,6 +37,17 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 		}
 	}
 
+	if (Settings->bOverrideLaneProfile)
+	{
+		if (const UZoneGraphSettings* ZGSettings = GetDefault<UZoneGraphSettings>())
+		{
+			for (const FZoneLaneProfile& Profile : ZGSettings->GetLaneProfiles())
+			{
+				Context->LaneProfileMap.Add(Profile.Name, FZoneLaneProfileRef(Profile));
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -100,7 +111,8 @@ namespace PCGExClusterToZoneGraph
 
 	void FZGRoad::Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster)
 	{
-		const FZoneShapePointType PointType = Processor->GetSettings()->RoadPointType;
+		const auto* S = Processor->GetSettings();
+		const FZoneShapePointType DefaultPointType = S->RoadPointType;
 
 		TArray<int32> Nodes;
 		const int32 ChainSize = Chain->GetNodes(Cluster, Nodes, bIsReversed);
@@ -118,7 +130,16 @@ namespace PCGExClusterToZoneGraph
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
 			ShapePoint.SetRotationFromForwardAndUp((NextPosition - Position), FVector::UpVector);
-			ShapePoint.Type = PointType;
+
+			if (Processor->RoadPointTypeBuffer)
+			{
+				const int32 NodePointIndex = Cluster->GetNode(Nodes[i])->PointIndex;
+				ShapePoint.Type = static_cast<FZoneShapePointType>(FMath::Clamp(Processor->RoadPointTypeBuffer->Read(NodePointIndex), 0, 3));
+			}
+			else
+			{
+				ShapePoint.Type = DefaultPointType;
+			}
 
 			PrecomputedPoints[i] = ShapePoint;
 		}
@@ -136,12 +157,18 @@ namespace PCGExClusterToZoneGraph
 				if (!Cluster->GetNode(Nodes.Last())->IsLeaf()) { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius; }
 			}
 		}
+
+		// Cache lane profile from start node
+		const int32 StartPointIndex = Cluster->GetNode(Nodes[0])->PointIndex;
+		CachedLaneProfile = Processor->LaneProfileBuffer
+			? Processor->ResolveLaneProfile(StartPointIndex)
+			: S->LaneProfile;
 	}
 
 	void FZGRoad::Compile()
 	{
 		Component->SetShapeType(FZoneShapeType::Spline);
-		Component->SetCommonLaneProfile(Processor->GetSettings()->LaneProfile);
+		Component->SetCommonLaneProfile(CachedLaneProfile);
 		Component->GetMutablePoints() = MoveTemp(PrecomputedPoints);
 		Component->UpdateShape();
 	}
@@ -162,9 +189,29 @@ namespace PCGExClusterToZoneGraph
 	{
 		const auto* S = Processor->GetSettings();
 		const PCGExClusters::FNode* Center = Cluster->GetNode(NodeIndex);
+		const int32 PointIndex = Center->PointIndex;
 		const FVector CenterPosition = Cluster->GetPos(Center);
-		const double Radius = S->PolygonRadius;
-		const FZoneShapePointType PointType = S->PolygonPointType;
+
+		// Cache per-polygon overrides from the center node
+		CachedRadius = Processor->PolygonRadiusBuffer
+			? Processor->PolygonRadiusBuffer->Read(PointIndex)
+			: S->PolygonRadius;
+
+		CachedRoutingType = Processor->PolygonRoutingTypeBuffer
+			? static_cast<EZoneShapePolygonRoutingType>(FMath::Clamp(Processor->PolygonRoutingTypeBuffer->Read(PointIndex), 0, 1))
+			: S->PolygonRoutingType;
+
+		CachedPointType = Processor->PolygonPointTypeBuffer
+			? static_cast<FZoneShapePointType>(FMath::Clamp(Processor->PolygonPointTypeBuffer->Read(PointIndex), 0, 3))
+			: S->PolygonPointType;
+
+		CachedAdditionalTags = Processor->AdditionalIntersectionTagsBuffer
+			? FZoneGraphTagMask(static_cast<uint32>(Processor->AdditionalIntersectionTagsBuffer->Read(PointIndex)))
+			: S->AdditionalIntersectionTags;
+
+		CachedLaneProfile = Processor->LaneProfileBuffer
+			? Processor->ResolveLaneProfile(PointIndex)
+			: S->LaneProfile;
 
 		TArray<int32> Order;
 		PCGExArrayHelpers::ArrayOfIndices(Order, Roads.Num());
@@ -189,9 +236,9 @@ namespace PCGExClusterToZoneGraph
 
 			const FVector RoadDirection = (Cluster->GetPos(OtherNode) - CenterPosition).GetSafeNormal();
 
-			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * Radius);
+			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * CachedRadius);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
-			ShapePoint.Type = PointType;
+			ShapePoint.Type = CachedPointType;
 
 			PrecomputedPoints[i] = ShapePoint;
 		}
@@ -199,11 +246,10 @@ namespace PCGExClusterToZoneGraph
 
 	void FZGPolygon::Compile()
 	{
-		const auto* S = Processor->GetSettings();
 		Component->SetShapeType(FZoneShapeType::Polygon);
-		Component->SetPolygonRoutingType(S->PolygonRoutingType);
-		Component->SetTags(Component->GetTags() | S->AdditionalIntersectionTags);
-		Component->SetCommonLaneProfile(S->LaneProfile);
+		Component->SetPolygonRoutingType(CachedRoutingType);
+		Component->SetTags(Component->GetTags() | CachedAdditionalTags);
+		Component->SetCommonLaneProfile(CachedLaneProfile);
 		Component->GetMutablePoints() = MoveTemp(PrecomputedPoints);
 		Component->UpdateShape();
 	}
@@ -215,6 +261,13 @@ namespace PCGExClusterToZoneGraph
 		if (!IProcessor::Process(InTaskManager)) { return false; }
 
 		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
+
+		if (Settings->bOverridePolygonRadius) { PolygonRadiusBuffer = VtxDataFacade->GetReadable<double>(Settings->PolygonRadiusAttribute); }
+		if (Settings->bOverridePolygonRoutingType) { PolygonRoutingTypeBuffer = VtxDataFacade->GetReadable<int32>(Settings->PolygonRoutingTypeAttribute); }
+		if (Settings->bOverridePolygonPointType) { PolygonPointTypeBuffer = VtxDataFacade->GetReadable<int32>(Settings->PolygonPointTypeAttribute); }
+		if (Settings->bOverrideRoadPointType) { RoadPointTypeBuffer = VtxDataFacade->GetReadable<int32>(Settings->RoadPointTypeAttribute); }
+		if (Settings->bOverrideAdditionalIntersectionTags) { AdditionalIntersectionTagsBuffer = VtxDataFacade->GetReadable<int32>(Settings->AdditionalIntersectionTagsAttribute); }
+		if (Settings->bOverrideLaneProfile) { LaneProfileBuffer = VtxDataFacade->GetReadable<FName>(Settings->LaneProfileAttribute); }
 
 		if (VtxFiltersManager)
 		{
@@ -272,7 +325,7 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<FProcessor> This = SharedThis(this);
 
 		const int32 NumChains = ProcessedChains.Num();
-		const double PolygonRadius = Settings->PolygonRadius;
+		const double DefaultPolygonRadius = Settings->PolygonRadius;
 
 		Roads.Reserve(NumChains);
 
@@ -309,7 +362,10 @@ namespace PCGExClusterToZoneGraph
 					PolygonPtr = &NewPolygon;
 				}
 				(*PolygonPtr)->Add(Road, true);
-				Road->StartRadius = PolygonRadius;
+
+				Road->StartRadius = PolygonRadiusBuffer
+					? PolygonRadiusBuffer->Read(Start->PointIndex)
+					: DefaultPolygonRadius;
 			}
 
 			if (!End->IsLeaf())
@@ -325,7 +381,10 @@ namespace PCGExClusterToZoneGraph
 				}
 
 				(*PolygonPtr)->Add(Road, false);
-				Road->EndRadius = PolygonRadius;
+
+				Road->EndRadius = PolygonRadiusBuffer
+					? PolygonRadiusBuffer->Read(End->PointIndex)
+					: DefaultPolygonRadius;
 			}
 		}
 
@@ -408,6 +467,17 @@ namespace PCGExClusterToZoneGraph
 		// which runs on the main thread via RegisterBeginTickAction.
 	}
 
+	FZoneLaneProfileRef FProcessor::ResolveLaneProfile(int32 PointIndex) const
+	{
+		const FName ProfileName = LaneProfileBuffer->Read(PointIndex);
+		if (ProfileName.IsNone()) { return Settings->LaneProfile; }
+		if (const FZoneLaneProfileRef* Found = Context->LaneProfileMap.Find(ProfileName))
+		{
+			return *Found;
+		}
+		return Settings->LaneProfile;
+	}
+
 	void FProcessor::Cleanup()
 	{
 		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
@@ -415,6 +485,13 @@ namespace PCGExClusterToZoneGraph
 		ProcessedChains.Empty();
 		Roads.Empty();
 		Polygons.Empty();
+
+		PolygonRadiusBuffer.Reset();
+		PolygonRoutingTypeBuffer.Reset();
+		PolygonPointTypeBuffer.Reset();
+		RoadPointTypeBuffer.Reset();
+		AdditionalIntersectionTagsBuffer.Reset();
+		LaneProfileBuffer.Reset();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
@@ -422,6 +499,13 @@ namespace PCGExClusterToZoneGraph
 		TBatch<FProcessor>::RegisterBuffersDependencies(FacadePreloader);
 		PCGEX_TYPED_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
 		DirectionSettings.RegisterBuffersDependencies(ExecutionContext, FacadePreloader);
+
+		if (Settings->bOverridePolygonRadius) { FacadePreloader.Register<double>(ExecutionContext, Settings->PolygonRadiusAttribute); }
+		if (Settings->bOverridePolygonRoutingType) { FacadePreloader.Register<int32>(ExecutionContext, Settings->PolygonRoutingTypeAttribute); }
+		if (Settings->bOverridePolygonPointType) { FacadePreloader.Register<int32>(ExecutionContext, Settings->PolygonPointTypeAttribute); }
+		if (Settings->bOverrideRoadPointType) { FacadePreloader.Register<int32>(ExecutionContext, Settings->RoadPointTypeAttribute); }
+		if (Settings->bOverrideAdditionalIntersectionTags) { FacadePreloader.Register<int32>(ExecutionContext, Settings->AdditionalIntersectionTagsAttribute); }
+		if (Settings->bOverrideLaneProfile) { FacadePreloader.Register<FName>(ExecutionContext, Settings->LaneProfileAttribute); }
 	}
 
 	void FBatch::OnProcessingPreparationComplete()
