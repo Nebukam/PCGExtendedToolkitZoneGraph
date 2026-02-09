@@ -8,7 +8,9 @@
 #include "ZoneShapeComponent.h"
 #include "Clusters/PCGExCluster.h"
 #include "Clusters/Artifacts/PCGExChain.h"
+#include "Clusters/Artifacts/PCGExCachedChain.h"
 #include "Containers/PCGExManagedObjects.h"
+#include "Core/PCGExMT.h"
 #include "Helpers/PCGExArrayHelpers.h"
 
 #define LOCTEXT_NAMESPACE "PCGExClusterToZoneGraph"
@@ -38,8 +40,7 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 	return true;
 }
 
-bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
-	FPCGContext* InContext) const
+bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, const UPCGExSettings* InSettings) const
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FPCGExClusterToZoneGraphElement::Execute);
 
@@ -51,7 +52,7 @@ bool FPCGExClusterToZoneGraphElement::ExecuteInternal(
 			[](const TSharedPtr<PCGExData::FPointIOTaggedEntries>& Entries) { return true; },
 			[&](const TSharedPtr<PCGExClusterMT::IBatch>& NewBatch)
 			{
-				NewBatch->bRequiresWriteStep = true; // Not really but we need the step
+				//NewBatch->bRequiresWriteStep = true;
 				NewBatch->VtxFilterFactories = &Context->FilterFactories;
 			}))
 		{
@@ -266,9 +267,11 @@ namespace PCGExClusterToZoneGraph
 
 	bool FProcessor::BuildChains()
 	{
-		ChainBuilder = MakeShared<PCGExClusters::FNodeChainBuilder>(Cluster.ToSharedRef());
-		ChainBuilder->Breakpoints = VtxFilterCache;
-		bIsProcessorValid = ChainBuilder->Compile(TaskManager);
+		bIsProcessorValid = PCGExClusters::ChainHelpers::GetOrBuildChains(
+			Cluster.ToSharedRef(),
+			ProcessedChains,
+			VtxFilterCache,
+			false);
 
 		if (!bIsProcessorValid) { return false; }
 
@@ -280,7 +283,7 @@ namespace PCGExClusterToZoneGraph
 
 	void FProcessor::CompleteWork()
 	{
-		if (ChainBuilder->Chains.IsEmpty())
+		if (ProcessedChains.IsEmpty())
 		{
 			bIsProcessorValid = false;
 			return;
@@ -289,10 +292,10 @@ namespace PCGExClusterToZoneGraph
 		TMap<int32, TSharedPtr<FZGPolygon>> Map;
 		TSharedPtr<FProcessor> This = SharedThis(this);
 
-		const int32 NumChains = ChainBuilder->Chains.Num();
+		const int32 NumChains = ProcessedChains.Num();
 		for (int i = 0; i < NumChains; i++)
 		{
-			TSharedPtr<PCGExClusters::FNodeChain> Chain = ChainBuilder->Chains[i];
+			TSharedPtr<PCGExClusters::FNodeChain> Chain = ProcessedChains[i];
 			if (!Chain) { continue; }
 
 			int32 StartNode = -1;
@@ -347,8 +350,6 @@ namespace PCGExClusterToZoneGraph
 			}
 		}
 
-		ChainBuilder.Reset();
-
 		MainThreadToken = TaskManager->TryCreateToken(TEXT("ZGMainThreadToken"));
 
 		PCGEX_SUBSYSTEM
@@ -365,9 +366,28 @@ namespace PCGExClusterToZoneGraph
 	{
 		AActor* TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
 
-		// Init components on main thread
-		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->InitComponent(TargetActor); }
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->InitComponent(TargetActor); }
+		if (!TargetActor)
+		{
+			PCGE_LOG_C(Error, GraphAndLog, ExecutionContext, FTEXT("Invalid target actor."));
+			bIsProcessorValid = false;
+			return;
+		}
+
+		const FAttachmentTransformRules AttachmentRules = Settings->AttachmentRules.GetRules();
+
+		// Init and attach components on main thread
+		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons)
+		{
+			Polygon->InitComponent(TargetActor);
+			Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules);
+		}
+		for (const TSharedPtr<FZGRoad>& Road : Roads)
+		{
+			Road->InitComponent(TargetActor);
+			Context->AttachManagedComponent(TargetActor, Road->Component, AttachmentRules);
+		}
+
+		Context->AddNotifyActor(TargetActor);
 
 		if (Polygons.IsEmpty())
 		{
@@ -375,40 +395,42 @@ namespace PCGExClusterToZoneGraph
 			return;
 		}
 
-		// Dispatch async polygon processing
+		// Dispatch polygon compilation on main thread (component modification is not thread-safe)
+		PolygonCompileLoop = MakeShared<PCGExMT::FTimeSlicedMainThreadLoop>(Polygons.Num());
+		PolygonCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE](const int32 Index, const PCGExMT::FScope& Scope)
+		{
+			PCGEX_ASYNC_THIS
+			This->Polygons[Index]->Compile(This->Cluster);
+		};
 
-		PCGEX_ASYNC_GROUP_CHKD_VOID(TaskManager, CompileIntersections)
+		PolygonCompileLoop->OnCompleteCallback = [PCGEX_ASYNC_THIS_CAPTURE]()
+		{
+			PCGEX_ASYNC_THIS
+			This->OnPolygonsCompilationComplete();
+		};
 
-		CompileIntersections->OnCompleteCallback =
-			[PCGEX_ASYNC_THIS_CAPTURE]()
-			{
-				PCGEX_ASYNC_THIS
-				This->OnPolygonsCompilationComplete();
-			};
-
-		CompileIntersections->OnSubLoopStartCallback =
-			[PCGEX_ASYNC_THIS_CAPTURE](const PCGExMT::FScope& Scope)
-			{
-				PCGEX_ASYNC_THIS
-				PCGEX_SCOPE_LOOP(i) { This->Polygons[i]->Compile(This->Cluster); }
-			};
-
-		CompileIntersections->StartSubLoops(Polygons.Num(), 32);
+		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, PolygonCompileLoop)
 	}
 
 	void FProcessor::OnPolygonsCompilationComplete()
 	{
 		if (Roads.IsEmpty()) { return; }
-		StartParallelLoopForRange(Roads.Num(), 32);
+
+		// Dispatch road compilation on main thread (component modification is not thread-safe)
+		RoadCompileLoop = MakeShared<PCGExMT::FTimeSlicedMainThreadLoop>(Roads.Num());
+		RoadCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE](const int32 Index, const PCGExMT::FScope& Scope)
+		{
+			PCGEX_ASYNC_THIS
+			// Compile road, after polygons -- since polygons will feed road their start/end offset
+			This->Roads[Index]->Compile(This->Cluster);
+		};
+
+		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, RoadCompileLoop)
 	}
 
 	void FProcessor::ProcessRange(const PCGExMT::FScope& Scope)
 	{
-		PCGEX_SCOPE_LOOP(Index)
-		{
-			// Compile road, after polygons -- since polygons will feed road their start/end offset
-			Roads[Index]->Compile(Cluster);
-		}
+		// No longer used - road compilation moved to main thread via RoadCompileLoop
 	}
 
 	void FProcessor::OnRangeProcessingComplete()
@@ -417,29 +439,14 @@ namespace PCGExClusterToZoneGraph
 
 	void FProcessor::Output()
 	{
-		if (!this->bIsProcessorValid) { return; }
-
-		TRACE_CPUPROFILER_EVENT_SCOPE(UPCGExClusterToZoneGraph::FProcessor::Output);
-
-		AActor* TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
-
-		if (!TargetActor)
-		{
-			PCGE_LOG_C(Error, GraphAndLog, ExecutionContext, FTEXT("Invalid target actor."));
-			return;
-		}
-
-		const FAttachmentTransformRules AttachmentRules = Settings->AttachmentRules.GetRules();
-
-		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Context->AttachManagedComponent(TargetActor, Polygon->Component, AttachmentRules); }
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Context->AttachManagedComponent(TargetActor, Road->Component, AttachmentRules); }
-
-		Context->AddNotifyActor(TargetActor);
+		// Component creation, attachment, and notify are handled in InitComponents()
+		// which runs on the main thread via RegisterBeginTickAction.
 	}
 
 	void FProcessor::Cleanup()
 	{
 		TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>::Cleanup();
+		ProcessedChains.Empty();
 		Roads.Empty();
 		Polygons.Empty();
 	}
@@ -465,9 +472,6 @@ namespace PCGExClusterToZoneGraph
 		TBatch<FProcessor>::OnProcessingPreparationComplete();
 	}
 }
-
-
-#undef LOCTEXT_NAMESPACE
 
 
 #undef LOCTEXT_NAMESPACE
