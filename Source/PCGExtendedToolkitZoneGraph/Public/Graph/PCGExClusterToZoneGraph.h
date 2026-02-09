@@ -133,6 +133,7 @@ namespace PCGExClusterToZoneGraph
 	{
 	protected:
 		TSharedPtr<FProcessor> Processor;
+		TArray<FZoneShapePoint> PrecomputedPoints;
 
 	public:
 		UZoneShapeComponent* Component = nullptr;
@@ -150,7 +151,8 @@ namespace PCGExClusterToZoneGraph
 		bool bIsReversed = false;
 
 		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
-		void Compile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void Compile();
 	};
 
 	class FZGPolygon : public FZGBase
@@ -164,7 +166,8 @@ namespace PCGExClusterToZoneGraph
 		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExClusters::FNode* InNode);
 
 		void Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart);
-		void Compile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void Compile();
 	};
 
 	class FProcessor final : public PCGExClusterMT::TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>
@@ -174,18 +177,17 @@ namespace PCGExClusterToZoneGraph
 	protected:
 		FPCGExEdgeDirectionSettings DirectionSettings;
 
+		AActor* TargetActor = nullptr;
+		FAttachmentTransformRules CachedAttachmentRules = FAttachmentTransformRules::KeepWorldTransform;
+
 		TWeakPtr<PCGExMT::FAsyncToken> MainThreadToken;
 
-		TSharedPtr<PCGExMT::FTimeSlicedMainThreadLoop> PolygonCompileLoop;
-		TSharedPtr<PCGExMT::FTimeSlicedMainThreadLoop> RoadCompileLoop;
+		TSharedPtr<PCGExMT::FTimeSlicedMainThreadLoop> MainCompileLoop;
 
 		TArray<TSharedPtr<PCGExClusters::FNodeChain>> ProcessedChains;
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TArray<TSharedPtr<FZGPolygon>> Polygons;
-
-		TArray<UZoneShapeComponent> RoadComponents;
-		TArray<UZoneShapeComponent> PolygonsComponents;
 
 	public:
 		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade):
@@ -199,7 +201,6 @@ namespace PCGExClusterToZoneGraph
 		bool BuildChains();
 		virtual void CompleteWork() override;
 		void InitComponents();
-		void OnPolygonsCompilationComplete();
 		virtual void ProcessRange(const PCGExMT::FScope& Scope) override;
 		virtual void OnRangeProcessingComplete() override;
 
