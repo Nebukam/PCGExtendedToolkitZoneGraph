@@ -155,7 +155,6 @@ private:
 struct FPCGExClusterToZoneGraphContext final : FPCGExClustersProcessorContext
 {
 	friend class FPCGExClusterToZoneGraphElement;
-	TArray<TSharedPtr<PCGExClusters::FNodeChain>> Chains;
 
 	TArray<FString> ComponentTags;
 
@@ -183,7 +182,7 @@ namespace PCGExClusterToZoneGraph
 	class FZGBase : public TSharedFromThis<FZGBase>
 	{
 	protected:
-		TSharedPtr<FProcessor> Processor;
+		FProcessor* Processor = nullptr;
 		TArray<FZoneShapePoint> PrecomputedPoints;
 
 	public:
@@ -191,7 +190,7 @@ namespace PCGExClusterToZoneGraph
 		double StartRadius = 0;
 		double EndRadius = 0;
 
-		explicit FZGBase(const TSharedPtr<FProcessor>& InProcessor);
+		explicit FZGBase(FProcessor* InProcessor);
 		void InitComponent(AActor* InTargetActor);
 	};
 
@@ -203,7 +202,7 @@ namespace PCGExClusterToZoneGraph
 
 		FZoneLaneProfileRef CachedLaneProfile;
 
-		explicit FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
+		explicit FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
 	};
@@ -223,7 +222,7 @@ namespace PCGExClusterToZoneGraph
 	public:
 		int32 NodeIndex = -1;
 
-		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExClusters::FNode* InNode);
+		explicit FZGPolygon(FProcessor* InProcessor, const PCGExClusters::FNode* InNode);
 
 		void Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
