@@ -44,9 +44,10 @@ public:
 	{
 		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
 		{
-			if (const FZoneLaneProfile* NewLaneProfile = ZoneGraphSettings->GetDefaultLaneProfile())
+			const TArray<FZoneLaneProfile>& Profiles = ZoneGraphSettings->GetLaneProfiles();
+			if (!Profiles.IsEmpty())
 			{
-				LaneProfile = *NewLaneProfile;
+				LaneProfile = Profiles[0];
 			}
 		}
 	}

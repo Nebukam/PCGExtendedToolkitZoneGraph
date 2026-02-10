@@ -12,6 +12,7 @@
 #include "Containers/PCGExManagedObjects.h"
 #include "Core/PCGExMT.h"
 #include "Data/PCGExData.h"
+#include "Data/PCGExPointIO.h"
 #include "Data/Utils/PCGExDataPreloader.h"
 #include "Helpers/PCGExArrayHelpers.h"
 #include "Helpers/PCGExPointArrayDataHelpers.h"
