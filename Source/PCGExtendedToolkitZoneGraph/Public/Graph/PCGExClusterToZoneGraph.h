@@ -24,7 +24,7 @@ namespace PCGExMT
 	class FTimeSlicedMainThreadLoop;
 }
 
-UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters")
+UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters", meta=(PCGExNodeLibraryDoc="cluster-to-zone-graph"))
 class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 {
 	GENERATED_BODY()
