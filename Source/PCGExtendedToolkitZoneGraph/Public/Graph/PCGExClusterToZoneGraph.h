@@ -44,7 +44,6 @@ public:
 #else
 	UPCGExClusterToZoneGraphSettings()
 	{
-		
 	}
 #endif
 
@@ -81,63 +80,72 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FPCGExAttachmentRules AttachmentRules;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	double PolygonRadius = 100;
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonRadius = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Radius (Attr)", EditCondition="bOverridePolygonRadius"))
+	/** Per-point polygon radius override. Attribute type: double. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Radius (Attr)", EditCondition="bOverridePolygonRadius"))
 	FName PolygonRadiusAttribute = FName("ZG.PolygonRadius");
-	
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonRoutingType = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
+	/** Per-point polygon routing override. Attribute type: int32. 
+	 * Values: 0=Bezier, 1=Arcs. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
 	FName PolygonRoutingTypeAttribute = FName("ZG.PolygonRoutingType");
-	
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneShapePointType PolygonPointType = FZoneShapePointType::LaneProfile;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonPointType = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
+	/** Per-point polygon shape point type override. Attribute type: int32. 
+	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
 	FName PolygonPointTypeAttribute = FName("ZG.PolygonPointType");
-	
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneShapePointType RoadPointType = FZoneShapePointType::LaneProfile;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideRoadPointType = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
+	/** Per-point road shape point type override. Attribute type: int32. 
+	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
 	FName RoadPointTypeAttribute = FName("ZG.RoadPointType");
-	
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneLaneProfileRef LaneProfile;
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideLaneProfile = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
+	/** Per-point lane profile override. Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
 	FName LaneProfileAttribute = FName("ZG.LaneProfile");
-	
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneGraphTagMask AdditionalIntersectionTags = FZoneGraphTagMask::None;
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideAdditionalIntersectionTags = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName=" └─ Intersection Tags (Attr)", EditCondition="bOverrideAdditionalIntersectionTags"))
+	/** Per-point intersection tag override. Attribute type: int32, interpreted as a ZoneGraph tag bitmask (uint32). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Intersection Tags (Attr)", EditCondition="bOverrideAdditionalIntersectionTags"))
 	FName AdditionalIntersectionTagsAttribute = FName("ZG.IntersectionTags");
 
 private:
@@ -206,14 +214,14 @@ namespace PCGExClusterToZoneGraph
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TBitArray<> FromStart;
 
-	public:
-		int32 NodeIndex = -1;
-
 		double CachedRadius = 0;
 		EZoneShapePolygonRoutingType CachedRoutingType = EZoneShapePolygonRoutingType::Arcs;
 		FZoneShapePointType CachedPointType = FZoneShapePointType::LaneProfile;
 		FZoneGraphTagMask CachedAdditionalTags = FZoneGraphTagMask::None;
 		FZoneLaneProfileRef CachedLaneProfile;
+
+	public:
+		int32 NodeIndex = -1;
 
 		explicit FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExClusters::FNode* InNode);
 
@@ -225,7 +233,6 @@ namespace PCGExClusterToZoneGraph
 	class FProcessor final : public PCGExClusterMT::TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>
 	{
 		friend class FBatch;
-		friend class FZGBase;
 		friend class FZGRoad;
 		friend class FZGPolygon;
 
@@ -252,8 +259,8 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<PCGExData::TBuffer<FName>> LaneProfileBuffer;
 
 	public:
-		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade):
-			TProcessor(InVtxDataFacade, InEdgeDataFacade)
+		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade)
+			: TProcessor(InVtxDataFacade, InEdgeDataFacade)
 		{
 		}
 
@@ -282,8 +289,8 @@ namespace PCGExClusterToZoneGraph
 		FPCGExEdgeDirectionSettings DirectionSettings;
 
 	public:
-		FBatch(FPCGExContext* InContext, const TSharedRef<PCGExData::FPointIO>& InVtx, const TArrayView<TSharedRef<PCGExData::FPointIO>> InEdges):
-			TBatch(InContext, InVtx, InEdges)
+		FBatch(FPCGExContext* InContext, const TSharedRef<PCGExData::FPointIO>& InVtx, const TArrayView<TSharedRef<PCGExData::FPointIO>> InEdges)
+			: TBatch(InContext, InVtx, InEdges)
 		{
 			bAllowVtxDataFacadeScopedGet = true;
 			DefaultVtxFilterValue = false;
