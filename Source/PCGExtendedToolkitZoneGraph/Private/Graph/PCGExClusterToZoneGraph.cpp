@@ -11,6 +11,8 @@
 #include "Clusters/Artifacts/PCGExCachedChain.h"
 #include "Containers/PCGExManagedObjects.h"
 #include "Core/PCGExMT.h"
+#include "Data/PCGExData.h"
+#include "Data/Utils/PCGExDataPreloader.h"
 #include "Helpers/PCGExArrayHelpers.h"
 
 #define LOCTEXT_NAMESPACE "PCGExClusterToZoneGraph"
