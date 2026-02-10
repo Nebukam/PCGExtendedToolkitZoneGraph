@@ -82,7 +82,7 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 
 namespace PCGExClusterToZoneGraph
 {
-	FZGBase::FZGBase(const TSharedPtr<FProcessor>& InProcessor)
+	FZGBase::FZGBase(FProcessor* InProcessor)
 		: Processor(InProcessor)
 	{
 	}
@@ -104,7 +104,7 @@ namespace PCGExClusterToZoneGraph
 		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags) { Component->ComponentTags.Add(FName(ComponentTag)); }
 	}
 
-	FZGRoad::FZGRoad(const TSharedPtr<FProcessor>& InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse)
+	FZGRoad::FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse)
 		: FZGBase(InProcessor), Chain(InChain), bIsReversed(InReverse)
 	{
 	}
@@ -181,7 +181,7 @@ namespace PCGExClusterToZoneGraph
 		Component->UpdateShape();
 	}
 
-	FZGPolygon::FZGPolygon(const TSharedPtr<FProcessor>& InProcessor, const PCGExClusters::FNode* InNode)
+	FZGPolygon::FZGPolygon(FProcessor* InProcessor, const PCGExClusters::FNode* InNode)
 		: FZGBase(InProcessor), NodeIndex(InNode->Index)
 	{
 		FromStart.Init(false, InNode->Num());
@@ -196,7 +196,7 @@ namespace PCGExClusterToZoneGraph
 	void FZGPolygon::Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster)
 	{
 		const auto* S = Processor->GetSettings();
-		const auto* P = Processor.Get();
+		const auto* P = Processor;
 		const PCGExClusters::FNode* Center = Cluster->GetNode(NodeIndex);
 		const int32 PointIndex = Center->PointIndex;
 		const FVector CenterPosition = Cluster->GetPos(Center);
@@ -315,7 +315,6 @@ namespace PCGExClusterToZoneGraph
 		}
 
 		TMap<int32, TSharedPtr<FZGPolygon>> Map;
-		TSharedPtr<FProcessor> This = SharedThis(this);
 
 		const int32 NumChains = ProcessedChains.Num();
 		const double DefaultPolygonRadius = Settings->PolygonRadius;
@@ -331,7 +330,7 @@ namespace PCGExClusterToZoneGraph
 			int32 EndNode = Chain->Links.Last().Node;
 			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, StartNode, EndNode);
 
-			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(This, Chain, bReverse);
+			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(this, Chain, bReverse);
 			Roads.Add(Road);
 
 			const PCGExClusters::FNode* Start = Cluster->GetNode(StartNode);
@@ -349,7 +348,7 @@ namespace PCGExClusterToZoneGraph
 
 				if (!PolygonPtr)
 				{
-					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, Start);
+					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, Start);
 					Polygons.Add(NewPolygon);
 					Map.Add(StartNode, NewPolygon);
 					PolygonPtr = &NewPolygon;
@@ -364,7 +363,7 @@ namespace PCGExClusterToZoneGraph
 
 				if (!PolygonPtr)
 				{
-					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(This, End);
+					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, End);
 					Polygons.Add(NewPolygon);
 					Map.Add(EndNode, NewPolygon);
 					PolygonPtr = &NewPolygon;
