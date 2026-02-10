@@ -14,12 +14,26 @@
 #include "Data/PCGExData.h"
 #include "Data/Utils/PCGExDataPreloader.h"
 #include "Helpers/PCGExArrayHelpers.h"
+#include "Helpers/PCGExPointArrayDataHelpers.h"
+#include "Paths/PCGExPathsHelpers.h"
 
 #define LOCTEXT_NAMESPACE "PCGExClusterToZoneGraph"
 #define PCGEX_NAMESPACE ClusterToZoneGraph
 
+namespace PCGExClusterToZoneGraph
+{
+	const FName OutputPolygonPathsLabel = TEXT("Polygon Paths");
+}
+
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
+
+TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties() const
+{
+	TArray<FPCGPinProperties> PinProperties = Super::OutputPinProperties();
+	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal)
+	return PinProperties;
+}
 
 PCGEX_INITIALIZE_ELEMENT(ClusterToZoneGraph)
 PCGEX_ELEMENT_BATCH_EDGE_IMPL_ADV(ClusterToZoneGraph)
@@ -50,6 +64,12 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 		}
 	}
 
+	if (Settings->bOutputPolygonPaths)
+	{
+		Context->OutputPolygonPaths = MakeShared<PCGExData::FPointIOCollection>(Context);
+		Context->OutputPolygonPaths->OutputPin = PCGExClusterToZoneGraph::OutputPolygonPathsLabel;
+	}
+
 	return true;
 }
 
@@ -78,6 +98,9 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 	Context->OutputBatches();
 	Context->OutputPointsAndEdges();
 	Context->ExecuteOnNotifyActors(Settings->PostProcessFunctionNames);
+
+	if (Context->OutputPolygonPaths) { Context->OutputPolygonPaths->StageOutputs(); }
+	else { Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 2); }
 
 	return Context->TryComplete();
 }
@@ -130,7 +153,11 @@ namespace PCGExClusterToZoneGraph
 			int32 MaxCount = 0;
 			for (const auto& [Name, Count] : ProfileCounts)
 			{
-				if (Count > MaxCount) { MaxCount = Count; MostCommon = Name; }
+				if (Count > MaxCount)
+				{
+					MaxCount = Count;
+					MostCommon = Name;
+				}
 			}
 
 			CachedLaneProfile = Processor->ResolveLaneProfileByName(MostCommon);
@@ -170,8 +197,8 @@ namespace PCGExClusterToZoneGraph
 		{
 			const FVector Position = Cluster->GetPos(Nodes[i]);
 			const FVector NextPosition = (i == ChainSize - 1)
-				? Position + (Position - Cluster->GetPos(Nodes[i - 1]))
-				: Cluster->GetPos(Nodes[i + 1]);
+				                             ? Position + (Position - Cluster->GetPos(Nodes[i - 1]))
+				                             : Cluster->GetPos(Nodes[i + 1]);
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
 			ShapePoint.SetRotationFromForwardAndUp((NextPosition - Position), FVector::UpVector);
@@ -285,6 +312,7 @@ namespace PCGExClusterToZoneGraph
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, Order.Num());
 		CachedPointLaneProfiles.SetNum(Order.Num());
+		CachedPointHalfWidths.SetNum(Order.Num());
 
 		for (int i = 0; i < Order.Num(); i++)
 		{
@@ -292,8 +320,8 @@ namespace PCGExClusterToZoneGraph
 			const TSharedPtr<FZGRoad>& Road = Roads[Ri];
 
 			const PCGExClusters::FNode* OtherNode = (Road->Chain->SingleEdge != -1)
-				? (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links.Last()) : Cluster->GetNode(Road->Chain->Seed.Node))
-				: (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1)));
+				                                        ? (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links.Last()) : Cluster->GetNode(Road->Chain->Seed.Node))
+				                                        : (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1)));
 
 			const FVector RoadDirection = (Cluster->GetPos(OtherNode) - CenterPosition).GetSafeNormal();
 
@@ -303,6 +331,7 @@ namespace PCGExClusterToZoneGraph
 
 			PrecomputedPoints[i] = ShapePoint;
 			CachedPointLaneProfiles[i] = Road->CachedLaneProfile;
+			CachedPointHalfWidths[i] = Road->CachedTotalProfileWidth * 0.5;
 		}
 	}
 
@@ -318,6 +347,25 @@ namespace PCGExClusterToZoneGraph
 			{
 				Roads[i]->EndRadius = CachedRoadRadii[i];
 			}
+		}
+	}
+
+	void FZGPolygon::BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const
+	{
+		const int32 NumConnections = PrecomputedPoints.Num();
+		PCGExPointArrayDataHelpers::SetNumPointsAllocated(InPathIO->GetOut(), NumConnections * 2);
+
+		TPCGValueRange<FTransform> Transforms = InPathIO->GetOut()->GetTransformValueRange();
+		for (int32 i = 0; i < NumConnections; i++)
+		{
+			const FZoneShapePoint& Pt = PrecomputedPoints[i];
+			const double HalfWidth = CachedPointHalfWidths[i];
+
+			const FVector Left = Pt.Position + Pt.Rotation.RotateVector(FVector::LeftVector) * HalfWidth;
+			const FVector Right = Pt.Position + Pt.Rotation.RotateVector(FVector::RightVector) * HalfWidth;
+
+			Transforms[i * 2] = FTransform(Pt.Rotation, Right);
+			Transforms[i * 2 + 1] = FTransform(Pt.Rotation, Left);
 		}
 	}
 
@@ -467,6 +515,19 @@ namespace PCGExClusterToZoneGraph
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveLaneProfile(Cluster); }
 		// Phase 2: Polygon precompute (uses road widths for auto-radius)
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->Precompute(Cluster); }
+		// Phase 2.5: Output polygon paths (before Compile MoveTemp's PrecomputedPoints)
+		if (Context->OutputPolygonPaths)
+		{
+			const int32 IOBase = (VtxDataFacade->Source->IOIndex + 1) * 100000;
+			for (const TSharedPtr<FZGPolygon>& Polygon : Polygons)
+			{
+				const int32 PointIndex = Cluster->GetNode(Polygon->NodeIndex)->PointIndex;
+				TSharedPtr<PCGExData::FPointIO> PathIO = Context->OutputPolygonPaths->Emplace_GetRef(VtxDataFacade->Source, PCGExData::EIOInit::New);
+				PathIO->IOIndex = IOBase + PointIndex;
+				Polygon->BuildPathOutput(PathIO);
+				PCGExPaths::Helpers::SetClosedLoop(PathIO, true);
+			}
+		}
 		// Phase 3: Push final polygon radii back to road endpoints
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->SyncRadiusToRoads(); }
 		// Phase 4: Road precompute (uses synced radii for endpoint offsets)
