@@ -13,6 +13,16 @@
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
+UENUM(BlueprintType)
+enum class EPCGExZGAutoRadiusMode : uint8
+{
+	Disabled       = 0 UMETA(DisplayName="Disabled"),
+	WidestLane     = 1 UMETA(DisplayName="Widest Lane"),
+	HalfProfile    = 2 UMETA(DisplayName="Half Profile Width"),
+	WidestLaneMin  = 3 UMETA(DisplayName="Widest Lane (Min)"),
+	HalfProfileMin = 4 UMETA(DisplayName="Half Profile Width (Min)"),
+};
+
 namespace PCGExClusters
 {
 	class FNodeChain;
@@ -86,9 +96,17 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonRadius = false;
 
-	/** Per-point polygon radius override. Attribute type: double. */
+	/** Per-point polygon radius override. Read from: Points. Attribute type: double. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Radius (Attr)", EditCondition="bOverridePolygonRadius"))
 	FName PolygonRadiusAttribute = FName("ZG.PolygonRadius");
+
+	/** Auto-compute polygon radius from connected road lane profiles.
+	 * Disabled: use user radius only.
+	 * WidestLane: radius = widest single lane across connected roads.
+	 * HalfProfile: radius = max(total profile width) / 2 across connected roads.
+	 * WidestLane (Min) / HalfProfile (Min): use the larger of user radius and computed value. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
+	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -97,7 +115,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonRoutingType = false;
 
-	/** Per-point polygon routing override. Attribute type: int32. 
+	/** Per-point polygon routing override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Bezier, 1=Arcs. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
 	FName PolygonRoutingTypeAttribute = FName("ZG.PolygonRoutingType");
@@ -109,7 +127,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverridePolygonPointType = false;
 
-	/** Per-point polygon shape point type override. Attribute type: int32. 
+	/** Per-point polygon shape point type override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
 	FName PolygonPointTypeAttribute = FName("ZG.PolygonPointType");
@@ -121,7 +139,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideRoadPointType = false;
 
-	/** Per-point road shape point type override. Attribute type: int32. 
+	/** Per-edge road shape point type override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
 	FName RoadPointTypeAttribute = FName("ZG.RoadPointType");
@@ -133,7 +151,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideLaneProfile = false;
 
-	/** Per-point lane profile override. Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
+	/** Lane profile override. Read from: Points (polygons), Edges then Points fallback (roads, majority vote). Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
 	FName LaneProfileAttribute = FName("ZG.LaneProfile");
 
@@ -144,7 +162,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideAdditionalIntersectionTags = false;
 
-	/** Per-point intersection tag override. Attribute type: int32, interpreted as a ZoneGraph tag bitmask (uint32). */
+	/** Per-point intersection tag override. Read from: Points. Attribute type: int32, interpreted as a ZoneGraph tag bitmask (uint32). */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Intersection Tags (Attr)", EditCondition="bOverrideAdditionalIntersectionTags"))
 	FName AdditionalIntersectionTagsAttribute = FName("ZG.IntersectionTags");
 
@@ -201,8 +219,11 @@ namespace PCGExClusterToZoneGraph
 		bool bIsReversed = false;
 
 		FZoneLaneProfileRef CachedLaneProfile;
+		double CachedMaxLaneWidth = 0;
+		double CachedTotalProfileWidth = 0;
 
 		explicit FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
+		void ResolveLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
 	};
@@ -214,10 +235,12 @@ namespace PCGExClusterToZoneGraph
 		TBitArray<> FromStart;
 
 		double CachedRadius = 0;
+		TArray<double> CachedRoadRadii;
 		EZoneShapePolygonRoutingType CachedRoutingType = EZoneShapePolygonRoutingType::Arcs;
 		FZoneShapePointType CachedPointType = FZoneShapePointType::LaneProfile;
 		FZoneGraphTagMask CachedAdditionalTags = FZoneGraphTagMask::None;
 		FZoneLaneProfileRef CachedLaneProfile;
+		TArray<FZoneLaneProfileRef> CachedPointLaneProfiles;
 
 	public:
 		int32 NodeIndex = -1;
@@ -226,6 +249,7 @@ namespace PCGExClusterToZoneGraph
 
 		void Add(const TSharedPtr<FZGRoad>& InRoad, bool bFromStart);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void SyncRadiusToRoads();
 		void Compile();
 	};
 
@@ -255,7 +279,7 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<PCGExData::TBuffer<int32>> PolygonPointTypeBuffer;
 		TSharedPtr<PCGExData::TBuffer<int32>> RoadPointTypeBuffer;
 		TSharedPtr<PCGExData::TBuffer<int32>> AdditionalIntersectionTagsBuffer;
-		TSharedPtr<PCGExData::TBuffer<FName>> LaneProfileBuffer;
+		TSharedPtr<PCGExData::TBuffer<FName>> EdgeLaneProfileBuffer;
 
 	public:
 		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade)
@@ -276,7 +300,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual void Cleanup() override;
 
-		FZoneLaneProfileRef ResolveLaneProfile(int32 PointIndex) const;
+		FZoneLaneProfileRef ResolveLaneProfileByName(FName ProfileName) const;
 	};
 
 	class FBatch final : public PCGExClusterMT::TBatch<FProcessor>
