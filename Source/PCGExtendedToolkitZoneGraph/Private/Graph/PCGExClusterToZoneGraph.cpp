@@ -23,6 +23,7 @@
 namespace PCGExClusterToZoneGraph
 {
 	const FName OutputPolygonPathsLabel = TEXT("Polygon Paths");
+	const FName OutputRoadPathsLabel = TEXT("Road Paths");
 }
 
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
@@ -32,6 +33,7 @@ TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties(
 {
 	TArray<FPCGPinProperties> PinProperties = Super::OutputPinProperties();
 	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal)
+	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal)
 	return PinProperties;
 }
 
@@ -70,6 +72,12 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 		Context->OutputPolygonPaths->OutputPin = PCGExClusterToZoneGraph::OutputPolygonPathsLabel;
 	}
 
+	if (Settings->bOutputRoadPaths)
+	{
+		Context->OutputRoadPaths = MakeShared<PCGExData::FPointIOCollection>(Context);
+		Context->OutputRoadPaths->OutputPin = PCGExClusterToZoneGraph::OutputRoadPathsLabel;
+	}
+
 	return true;
 }
 
@@ -101,6 +109,9 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 
 	if (Context->OutputPolygonPaths) { Context->OutputPolygonPaths->StageOutputs(); }
 	else { Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 2); }
+
+	if (Context->OutputRoadPaths) { Context->OutputRoadPaths->StageOutputs(); }
+	else { Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 3); }
 
 	return Context->TryComplete();
 }
@@ -242,6 +253,39 @@ namespace PCGExClusterToZoneGraph
 		Component->UpdateShape();
 	}
 
+	void FZGRoad::BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const
+	{
+		const auto* S = Processor->GetSettings();
+		const TArrayView<const FZoneShapePoint> Points = Component->GetPoints();
+		const int32 NumPoints = Points.Num();
+
+		PCGExPointArrayDataHelpers::SetNumPointsAllocated(InPathIO->GetOut(), NumPoints);
+		TPCGValueRange<FTransform> Transforms = InPathIO->GetOut()->GetTransformValueRange();
+
+		for (int32 i = 0; i < NumPoints; i++)
+		{
+			const FZoneShapePoint& Pt = Points[i];
+			Transforms[i] = FTransform(Pt.Rotation, Pt.Position);
+		}
+
+		PCGEX_MAKE_SHARED(PathFacade, PCGExData::FFacade, InPathIO.ToSharedRef())
+
+		TSharedPtr<PCGExData::TBuffer<FVector>> ArriveWriter = PathFacade->GetWritable<FVector>(S->ArriveName, FVector::ZeroVector, true, PCGExData::EBufferInit::New);
+		TSharedPtr<PCGExData::TBuffer<FVector>> LeaveWriter = PathFacade->GetWritable<FVector>(S->LeaveName, FVector::ZeroVector, true, PCGExData::EBufferInit::New);
+
+		for (int32 i = 0; i < NumPoints; i++)
+		{
+			const FZoneShapePoint& Pt = Points[i];
+			const FVector Forward = Pt.Rotation.RotateVector(FVector::ForwardVector);
+			const double TL = Pt.TangentLength;
+
+			ArriveWriter->SetValue(i, -Forward * TL);
+			LeaveWriter->SetValue(i, Forward * TL);
+		}
+
+		PathFacade->WriteFastest(Processor->TaskManager);
+	}
+
 	FZGPolygon::FZGPolygon(FProcessor* InProcessor, const PCGExClusters::FNode* InNode)
 		: FZGBase(InProcessor), NodeIndex(InNode->Index)
 	{
@@ -352,14 +396,15 @@ namespace PCGExClusterToZoneGraph
 
 	void FZGPolygon::BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const
 	{
-		const int32 NumConnections = PrecomputedPoints.Num();
+		const TArrayView<const FZoneShapePoint> Points = Component->GetPoints();
+		const int32 NumConnections = Points.Num();
 		PCGExPointArrayDataHelpers::SetNumPointsAllocated(InPathIO->GetOut(), NumConnections * 2);
 
 		TPCGValueRange<FTransform> Transforms = InPathIO->GetOut()->GetTransformValueRange();
 		for (int32 i = 0; i < NumConnections; i++)
 		{
-			const FZoneShapePoint& Pt = PrecomputedPoints[i];
-			const double HalfWidth = CachedPointHalfWidths[i];
+			const FZoneShapePoint& Pt = Points[i];
+			const double HalfWidth = Pt.TangentLength;
 
 			const FVector Left = Pt.Position + Pt.Rotation.RotateVector(FVector::LeftVector) * HalfWidth;
 			const FVector Right = Pt.Position + Pt.Rotation.RotateVector(FVector::RightVector) * HalfWidth;
@@ -515,19 +560,6 @@ namespace PCGExClusterToZoneGraph
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveLaneProfile(Cluster); }
 		// Phase 2: Polygon precompute (uses road widths for auto-radius)
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->Precompute(Cluster); }
-		// Phase 2.5: Output polygon paths (before Compile MoveTemp's PrecomputedPoints)
-		if (Context->OutputPolygonPaths)
-		{
-			const int32 IOBase = (VtxDataFacade->Source->IOIndex + 1) * 100000;
-			for (const TSharedPtr<FZGPolygon>& Polygon : Polygons)
-			{
-				const int32 PointIndex = Cluster->GetNode(Polygon->NodeIndex)->PointIndex;
-				TSharedPtr<PCGExData::FPointIO> PathIO = Context->OutputPolygonPaths->Emplace_GetRef(VtxDataFacade->Source, PCGExData::EIOInit::New);
-				PathIO->IOIndex = IOBase + PointIndex;
-				Polygon->BuildPathOutput(PathIO);
-				PCGExPaths::Helpers::SetClosedLoop(PathIO, true);
-			}
-		}
 		// Phase 3: Push final polygon radii back to road endpoints
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->SyncRadiusToRoads(); }
 		// Phase 4: Road precompute (uses synced radii for endpoint offsets)
@@ -562,23 +594,43 @@ namespace PCGExClusterToZoneGraph
 
 		CachedAttachmentRules = Settings->AttachmentRules.GetRules();
 
+		const int32 IOBase = (VtxDataFacade->Source->IOIndex + 1) * 100000;
+
 		// Single time-sliced loop: polygons first (indices 0..NumPolygons-1), then roads
 		MainCompileLoop = MakeShared<PCGExMT::FTimeSlicedMainThreadLoop>(TotalCount);
-		MainCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE, NumPolygons](const int32 Index, const PCGExMT::FScope& Scope)
+		MainCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE, NumPolygons, IOBase](const int32 Index, const PCGExMT::FScope& Scope)
 		{
 			PCGEX_ASYNC_THIS
 			if (Index < NumPolygons)
 			{
-				This->Polygons[Index]->InitComponent(This->TargetActor);
-				This->Context->AttachManagedComponent(This->TargetActor, This->Polygons[Index]->Component, This->CachedAttachmentRules);
-				This->Polygons[Index]->Compile();
+				auto& Polygon = This->Polygons[Index];
+				Polygon->InitComponent(This->TargetActor);
+				This->Context->AttachManagedComponent(This->TargetActor, Polygon->Component, This->CachedAttachmentRules);
+				Polygon->Compile();
+
+				if (This->Context->OutputPolygonPaths)
+				{
+					const int32 PointIndex = This->Cluster->GetNode(Polygon->NodeIndex)->PointIndex;
+					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputPolygonPaths->Emplace_GetRef(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
+					PathIO->IOIndex = IOBase + PointIndex;
+					Polygon->BuildPathOutput(PathIO);
+					PCGExPaths::Helpers::SetClosedLoop(PathIO, true);
+				}
 			}
 			else
 			{
 				const int32 RoadIndex = Index - NumPolygons;
-				This->Roads[RoadIndex]->InitComponent(This->TargetActor);
-				This->Context->AttachManagedComponent(This->TargetActor, This->Roads[RoadIndex]->Component, This->CachedAttachmentRules);
-				This->Roads[RoadIndex]->Compile();
+				auto& Road = This->Roads[RoadIndex];
+				Road->InitComponent(This->TargetActor);
+				This->Context->AttachManagedComponent(This->TargetActor, Road->Component, This->CachedAttachmentRules);
+				Road->Compile();
+
+				if (This->Context->OutputRoadPaths)
+				{
+					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputRoadPaths->Emplace_GetRef(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
+					PathIO->IOIndex = IOBase + This->Cluster->GetNode(Road->Chain->Seed.Node)->PointIndex;
+					Road->BuildPathOutput(PathIO);
+				}
 			}
 		};
 

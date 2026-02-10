@@ -40,7 +40,6 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 	GENERATED_BODY()
 
 public:
-#if WITH_EDITOR
 	UPCGExClusterToZoneGraphSettings()
 	{
 		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
@@ -51,11 +50,6 @@ public:
 			}
 		}
 	}
-#else
-	UPCGExClusterToZoneGraphSettings()
-	{
-	}
-#endif
 
 	//~Begin UPCGSettings
 #if WITH_EDITOR
@@ -172,6 +166,16 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
 	bool bOutputPolygonPaths = false;
 
+	/** Output road splines as PCG paths with tangent attributes. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
+	bool bOutputRoadPaths = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
+	FName ArriveName = "ArriveTangent";
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
+	FName LeaveName = "LeaveTangent";
+
 private:
 	friend class FPCGExClusterToZoneGraphElement;
 };
@@ -185,6 +189,7 @@ struct FPCGExClusterToZoneGraphContext final : FPCGExClustersProcessorContext
 	TMap<FName, FZoneLaneProfileRef> LaneProfileMap;
 
 	TSharedPtr<PCGExData::FPointIOCollection> OutputPolygonPaths;
+	TSharedPtr<PCGExData::FPointIOCollection> OutputRoadPaths;
 
 protected:
 	PCGEX_ELEMENT_BATCH_EDGE_DECL
@@ -234,6 +239,7 @@ namespace PCGExClusterToZoneGraph
 		void ResolveLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
+		void BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const;
 	};
 
 	class FZGPolygon : public FZGBase
