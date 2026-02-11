@@ -12,8 +12,8 @@
   "SupportURL": "https://discord.gg/mde2vC5gbE",
   "CanContainContent": true,
   "EngineVersion": "5.7.0",
-  "IsBetaVersion": true,
-  "IsExperimentalVersion": true,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
   "Installed": false,
   "Modules": [
     {
