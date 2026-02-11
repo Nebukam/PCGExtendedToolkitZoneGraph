@@ -2,11 +2,10 @@
 // Released under the MIT license https://opensource.org/license/MIT/
 
 #include "PCGExElementsZoneGraph.h"
+
 #if WITH_EDITOR
 #include "ISettingsModule.h"
 #endif
-
-#include "PCGExGlobalSettings.h"
 
 #define LOCTEXT_NAMESPACE "FPCGExElementsZoneGraphModule"
 
@@ -20,7 +19,7 @@ void FPCGExElementsZoneGraphModule::ShutdownModule()
 {
 	IPCGExModuleInterface::ShutdownModule();
 }
-
+a
 #undef LOCTEXT_NAMESPACE
 
-IMPLEMENT_MODULE(FPCGExElementsZoneGraphModule, PCGExElementsZoneGraph)
+PCGEX_IMPLEMENT_MODULE(FPCGExElementsZoneGraphModule, PCGExElementsZoneGraph)
