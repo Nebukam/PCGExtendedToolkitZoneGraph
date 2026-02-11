@@ -4,9 +4,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "PCGExModuleInterface.h"
+#include "PCGExAddonModuleInterface.h"
 
-class FPCGExElementsZoneGraphModule final : public IPCGExModuleInterface
+class FPCGExElementsZoneGraphModule final : public IPCGExAddonModuleInterface
 {
 	PCGEX_MODULE_BODY
 	
