@@ -4,9 +4,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PCGExModuleInterface.h"
 #include "Modules/ModuleManager.h"
 
-class FPCGExtendedToolkitZoneGraphModule final : public IModuleInterface
+class FPCGExElementsZoneGraphModule final : public IPCGExModuleInterface
 {
 public:
 	/** IModuleInterface implementation */

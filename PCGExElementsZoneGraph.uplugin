@@ -6,8 +6,8 @@
   "Description": "PCG Extended Toolkit Interop with Zone Graph plugin.",
   "Category": "PCG",
   "CreatedBy": "Timothé Lapetite",
-  "CreatedByURL": "https://github.com/Nebukam/PCGExtendedToolkitZoneGraph",
-  "DocsURL": "https://nebukam.github.io/PCGExtendedToolkitZoneGraph/",
+  "CreatedByURL": "https://github.com/Nebukam/PCGExElementsZoneGraph",
+  "DocsURL": "https://nebukam.github.io/PCGExElementsZoneGraph/",
   "FabURL": "com.epicgames.launcher://ue/Fab/product/---",
   "SupportURL": "https://discord.gg/mde2vC5gbE",
   "CanContainContent": true,
@@ -17,21 +17,8 @@
   "Installed": false,
   "Modules": [
     {
-      "Name": "PCGExtendedToolkitZoneGraph",
+      "Name": "PCGExElementsZoneGraph",
       "Type": "Runtime",
-      "LoadingPhase": "Default",
-      "PlatformAllowList": [
-        "Win64",
-        "Mac",
-        "IOS",
-        "Android",
-        "Linux",
-        "LinuxArm64"
-      ]
-    },
-    {
-      "Name": "PCGExtendedToolkitZoneGraphEditor",
-      "Type": "Editor",
       "LoadingPhase": "Default",
       "PlatformAllowList": [
         "Win64",
