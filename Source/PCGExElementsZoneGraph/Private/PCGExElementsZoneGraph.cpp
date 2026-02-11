@@ -12,7 +12,7 @@
 
 void FPCGExElementsZoneGraphModule::StartupModule()
 {
-	OldBaseModules.Add(TEXT("PCGExExtendedToolkitZoneGraph"));
+	OldBaseModules.Add(TEXT("PCGExtendedToolkitZoneGraph"));
 	IPCGExModuleInterface::StartupModule();
 }
 
