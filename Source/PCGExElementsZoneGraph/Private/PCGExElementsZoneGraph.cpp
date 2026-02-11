@@ -19,7 +19,7 @@ void FPCGExElementsZoneGraphModule::ShutdownModule()
 {
 	IPCGExModuleInterface::ShutdownModule();
 }
-a
+
 #undef LOCTEXT_NAMESPACE
 
 PCGEX_IMPLEMENT_MODULE(FPCGExElementsZoneGraphModule, PCGExElementsZoneGraph)
