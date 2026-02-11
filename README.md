@@ -1,7 +1,7 @@
 ![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen) ![5.6](https://img.shields.io/badge/5.6-darkgreen)
 
 <p align="center">
-  <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZoneGraph_Logo.png" alt="PCGEx Logo">
+  <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZG_Logo.png" alt="PCGEx Logo">
 </p>
 
 <h1 align="center">PCGEx + ZoneGraph</h1>
