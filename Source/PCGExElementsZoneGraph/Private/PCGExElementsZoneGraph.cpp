@@ -7,12 +7,12 @@
 #endif
 
 #include "PCGExGlobalSettings.h"
-#include "PCGExZoneGraphGlobalSettings.h"
 
 #define LOCTEXT_NAMESPACE "FPCGExElementsZoneGraphModule"
 
 void FPCGExElementsZoneGraphModule::StartupModule()
 {
+	OldBaseModules.Add(TEXT("PCGExExtendedToolkitZoneGraph"));
 	IPCGExModuleInterface::StartupModule();
 }
 
