@@ -25,7 +25,7 @@ This is a **companion plugin for [PCGEx](https://github.com/Nebukam/PCGExtendedT
 
 ### Experimental Status
 
-Both this plugin and Epic's ZoneGraph plugin are **experimental**. Epic warns that "ZoneGraph will have API breaking changes as its development progresses." If something breaks, [open an issue](https://github.com/Nebukam/PCGExElementsZoneGraph/issues) and I'll look into it.
+Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will have API breaking changes as its development progresses." If something breaks, [open an issue](https://github.com/Nebukam/PCGExElementsZoneGraph/issues) and I'll look into it.
 
 ---
 
