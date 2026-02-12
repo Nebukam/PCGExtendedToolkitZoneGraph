@@ -115,7 +115,7 @@ public:
 	/** Per-point polygon routing override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Bezier, 1=Arcs. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
-	FName PolygonRoutingTypeAttribute = FName("ZG.PolygonRoutingType");
+	FName PolygonRoutingTypeAttribute = FName("PolygonRoutingType");
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -127,7 +127,7 @@ public:
 	/** Per-point polygon shape point type override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
-	FName PolygonPointTypeAttribute = FName("ZG.PolygonPointType");
+	FName PolygonPointTypeAttribute = FName("PolygonPointType");
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -139,7 +139,7 @@ public:
 	/** Per-edge road shape point type override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
-	FName RoadPointTypeAttribute = FName("ZG.RoadPointType");
+	FName RoadPointTypeAttribute = FName("RoadPointType");
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -150,7 +150,7 @@ public:
 
 	/** Lane profile override. Read from: Points (polygons), Edges then Points fallback (roads, majority vote). Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
-	FName LaneProfileAttribute = FName("ZG.LaneProfile");
+	FName LaneProfileAttribute = FName("LaneProfile");
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -161,7 +161,7 @@ public:
 
 	/** Per-point intersection tag override. Read from: Points. Attribute type: int32, interpreted as a ZoneGraph tag bitmask (uint32). */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Intersection Tags (Attr)", EditCondition="bOverrideAdditionalIntersectionTags"))
-	FName AdditionalIntersectionTagsAttribute = FName("ZG.IntersectionTags");
+	FName AdditionalIntersectionTagsAttribute = FName("IntersectionTags");
 
 	/** Output polygon shapes as closed PCG paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
