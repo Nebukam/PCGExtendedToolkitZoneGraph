@@ -1,4 +1,4 @@
-![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen) ![5.6](https://img.shields.io/badge/5.6-darkgreen)
+![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen)
 
 <p align="center">
   <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZG_Logo.png" alt="PCGEx Logo">
@@ -32,7 +32,7 @@ Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will hav
 ## Requirements
 
 - **Unreal Engine 5.6+**
-- **[PCGExtendedToolkit](https://github.com/Nebukam/PCGExtendedToolkit)** — Core PCGEx plugin (free, MIT licensed)
+- **[PCGExtendedToolkit](https://github.com/Nebukam/PCGExtendedToolkit)** — Core PCGEx plugin (free, MIT licensed, Available on FAB)
 - **ZoneGraph** — Epic's experimental ZoneGraph plugin (included with the engine)
 
 ---
@@ -40,18 +40,7 @@ Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will hav
 ## Installation
 
 ### From FAB
-Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf90)**.
-
-### From Source
-1. Clone this repository into your project's `Plugins/` folder
-2. Ensure **PCGExtendedToolkit** and **ZoneGraph** are both enabled
-3. Regenerate project files and build
-
----
-
-## License
-
-**MIT License** — Free for personal and commercial use. See [LICENSE](LICENSE) for full terms.
+Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91)**.
 
 ---
 
