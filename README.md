@@ -1,4 +1,4 @@
-![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen) ![5.6](https://img.shields.io/badge/5.6-darkgreen)
+![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen)
 
 <p align="center">
   <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZG_Logo.png" alt="PCGEx Logo">
@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-  <a href="https://pcgex.gitbook.io/pcgex">Documentation</a> •
+  <a href="https://pcgex.gitbook.io/pcgex/zone-graph">Documentation</a> •
   <a href="https://discord.gg/mde2vC5gbE">Discord</a> •
-  <a href="https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf90">FAB</a>
+  <a href="https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91">FAB</a>
 </p>
 
 ---
@@ -31,7 +31,7 @@ Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will hav
 
 ## Requirements
 
-- **Unreal Engine 5.6+**
+- **Unreal Engine 5.7+**
 - **[PCGExtendedToolkit](https://github.com/Nebukam/PCGExtendedToolkit)** — Core PCGEx plugin (free, MIT licensed)
 - **ZoneGraph** — Epic's experimental ZoneGraph plugin (included with the engine)
 
@@ -40,9 +40,11 @@ Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will hav
 ## Installation
 
 ### From FAB
-Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf90)**.
+
+Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91)**.
 
 ### From Source
+
 1. Clone this repository into your project's `Plugins/` folder
 2. Ensure **PCGExtendedToolkit** and **ZoneGraph** are both enabled
 3. Regenerate project files and build
@@ -51,7 +53,13 @@ Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings
 
 ## License
 
-**MIT License** — Free for personal and commercial use. See [LICENSE](LICENSE) for full terms.
+> **This plugin is source-available**
+
+- **Personal use** — Free. Individuals may use, copy, and modify the plugin for non-commercial and personal projects at no cost.
+- **Studio / Professional use** — Requires a paid license, available through [FAB](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91) under the Professional pricing tier.
+- **Custom licensing** — Alternative licensing arrangements are available and are not bound to the FAB platform. Contact me directly to discuss terms.
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
