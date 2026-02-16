@@ -39,6 +39,7 @@ TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties(
 }
 
 PCGEX_INITIALIZE_ELEMENT(ClusterToZoneGraph)
+
 PCGEX_ELEMENT_BATCH_EDGE_IMPL_ADV(ClusterToZoneGraph)
 
 bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
@@ -203,7 +204,7 @@ namespace PCGExClusterToZoneGraph
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, ChainSize);
 
-		if (Chain->bIsClosedLoop) { Nodes.Add(Nodes.Last()); }
+		if (Chain->bIsClosedLoop) { const int32 LastNode = Nodes.Last(); Nodes.Add(LastNode); }
 
 		for (int i = 0; i < ChainSize; i++)
 		{
@@ -566,28 +567,6 @@ namespace PCGExClusterToZoneGraph
 		// Phase 4: Road precompute (uses synced radii for endpoint offsets)
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->Precompute(Cluster); }
 
-		MainThreadToken = TaskManager->TryCreateToken(TEXT("ZGMainThreadToken"));
-
-		PCGEX_SUBSYSTEM
-		PCGExSubsystem->RegisterBeginTickAction(
-			[PCGEX_ASYNC_THIS_CAPTURE]()
-			{
-				PCGEX_ASYNC_THIS
-				This->InitComponents();
-			});
-	}
-
-	void FProcessor::InitComponents()
-	{
-		TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
-
-		if (!TargetActor)
-		{
-			PCGE_LOG_C(Error, GraphAndLog, ExecutionContext, FTEXT("Invalid target actor."));
-			bIsProcessorValid = false;
-			return;
-		}
-
 		const int32 NumPolygons = Polygons.Num();
 		const int32 TotalCount = NumPolygons + Roads.Num();
 
@@ -597,11 +576,27 @@ namespace PCGExClusterToZoneGraph
 
 		const int32 IOBase = (VtxDataFacade->Source->IOIndex + 1) * 100000;
 
-		// Single time-sliced loop: polygons first (indices 0..NumPolygons-1), then roads
+		// Create the time-sliced main-thread loop and register it as a handle.
+		// The registered handle prevents the task manager from completing until
+		// all iterations finish. No separate token or deferred tick action needed.
 		MainCompileLoop = MakeShared<PCGExMT::FTimeSlicedMainThreadLoop>(TotalCount);
 		MainCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE, NumPolygons, IOBase](const int32 Index, const PCGExMT::FScope& Scope)
 		{
 			PCGEX_ASYNC_THIS
+
+			// Resolve TargetActor lazily on first iteration (runs on main thread)
+			if (Index == 0)
+			{
+				This->TargetActor = This->ExecutionContext->GetTargetActor(nullptr);
+				if (!This->TargetActor)
+				{
+					PCGE_LOG_C(Error, GraphAndLog, This->ExecutionContext, FTEXT("Invalid target actor."));
+					This->bIsProcessorValid = false;
+				}
+			}
+
+			if (!This->TargetActor) { return; }
+
 			if (Index < NumPolygons)
 			{
 				auto& Polygon = This->Polygons[Index];
@@ -638,8 +633,7 @@ namespace PCGExClusterToZoneGraph
 		MainCompileLoop->OnCompleteCallback = [PCGEX_ASYNC_THIS_CAPTURE]()
 		{
 			PCGEX_ASYNC_THIS
-			This->Context->AddNotifyActor(This->TargetActor);
-			PCGEX_ASYNC_RELEASE_TOKEN(This->MainThreadToken)
+			if (This->TargetActor) { This->Context->AddNotifyActor(This->TargetActor); }
 		};
 
 		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, MainCompileLoop)
@@ -656,8 +650,8 @@ namespace PCGExClusterToZoneGraph
 
 	void FProcessor::Output()
 	{
-		// Component creation, attachment, and notify are handled in InitComponents()
-		// which runs on the main thread via RegisterBeginTickAction.
+		// Component creation, attachment, and notify are handled in MainCompileLoop
+		// which runs on the main thread via the time-sliced loop mechanism.
 	}
 
 	FZoneLaneProfileRef FProcessor::ResolveLaneProfileByName(FName ProfileName) const

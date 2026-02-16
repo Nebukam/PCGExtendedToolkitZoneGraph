@@ -30,7 +30,6 @@ namespace PCGExClusters
 
 namespace PCGExMT
 {
-	class FAsyncToken;
 	class FTimeSlicedMainThreadLoop;
 }
 
@@ -62,6 +61,7 @@ protected:
 	virtual bool OutputPinsCanBeDeactivated() const override { return true; }
 	virtual TArray<FPCGPinProperties> OutputPinProperties() const override;
 	virtual FPCGElementPtr CreateElement() const override;
+	virtual bool ShouldCache() const override { return false; }
 	//~End UPCGSettings
 
 	//~Begin UPCGExPointsProcessorSettings
@@ -131,7 +131,7 @@ public:
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	FZoneShapePointType RoadPointType = FZoneShapePointType::LaneProfile;
+	FZoneShapePointType RoadPointType = FZoneShapePointType::AutoBezier;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideRoadPointType = false;
@@ -205,6 +205,7 @@ protected:
 	virtual bool AdvanceWork(FPCGExContext* InContext, const UPCGExSettings* InSettings) const override;
 
 	virtual bool CanExecuteOnlyOnMainThread(FPCGContext* Context) const override { return true; }
+	virtual bool IsCacheable(const UPCGSettings* InSettings) const override { return false; }
 };
 
 namespace PCGExClusterToZoneGraph
@@ -282,8 +283,6 @@ namespace PCGExClusterToZoneGraph
 		AActor* TargetActor = nullptr;
 		FAttachmentTransformRules CachedAttachmentRules = FAttachmentTransformRules::KeepWorldTransform;
 
-		TWeakPtr<PCGExMT::FAsyncToken> MainThreadToken;
-
 		TSharedPtr<PCGExMT::FTimeSlicedMainThreadLoop> MainCompileLoop;
 
 		TArray<TSharedPtr<PCGExClusters::FNodeChain>> ProcessedChains;
@@ -309,7 +308,6 @@ namespace PCGExClusterToZoneGraph
 		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager) override;
 		bool BuildChains();
 		virtual void CompleteWork() override;
-		void InitComponents();
 		virtual void ProcessRange(const PCGExMT::FScope& Scope) override;
 		virtual void OnRangeProcessingComplete() override;
 
