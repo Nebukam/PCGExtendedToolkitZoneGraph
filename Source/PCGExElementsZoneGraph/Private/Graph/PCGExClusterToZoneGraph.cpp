@@ -38,6 +38,7 @@ TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties(
 }
 
 PCGEX_INITIALIZE_ELEMENT(ClusterToZoneGraph)
+
 PCGEX_ELEMENT_BATCH_EDGE_IMPL_ADV(ClusterToZoneGraph)
 
 bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
@@ -200,9 +201,17 @@ namespace PCGExClusterToZoneGraph
 		TArray<int32> Nodes;
 		const int32 ChainSize = Chain->GetNodes(Cluster, Nodes, bIsReversed);
 
+		// Single-edge chains: GetNodes uses edge Start/End topology which may not match
+		// the chain's Seed/Last ordering. Fix ordering for correct endpoint processing.
+		if (ChainSize == 2 && !Chain->bIsClosedLoop)
+		{
+			const int32 ExpectedFirst = bIsReversed ? Chain->Links.Last().Node : Chain->Seed.Node;
+			if (Nodes[0] != ExpectedFirst) { Swap(Nodes[0], Nodes[1]); }
+		}
+
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, ChainSize);
 
-		if (Chain->bIsClosedLoop) { Nodes.Add(Nodes.Last()); }
+		if (Chain->bIsClosedLoop) { const int32 LastNode = Nodes.Last(); Nodes.Add(LastNode); }
 
 		for (int i = 0; i < ChainSize; i++)
 		{
@@ -232,15 +241,133 @@ namespace PCGExClusterToZoneGraph
 
 		if (!Chain->bIsClosedLoop)
 		{
-			if (bIsReversed)
+			const bool bTrim = S->bTrimRoadEndpoints;
+			const double BufferSq = S->EndpointTrimBuffer * S->EndpointTrimBuffer;
+
+			// --- Start endpoint ---
+			if (!FirstNode->IsLeaf())
 			{
-				if (!FirstNode->IsLeaf()) { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius; }
-				if (!LastNode->IsLeaf()) { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; }
+				if (StartEndpoint.bValid && bTrim)
+				{
+					// Walk backward from end to find the outermost half-space boundary crossing.
+					bool bFoundCrossing = false;
+
+					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
+					{
+						const double ProjJ = (PrecomputedPoints[j].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
+						const double ProjPrev = (PrecomputedPoints[j - 1].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
+
+						if (ProjJ >= StartEndpoint.Radius && ProjPrev < StartEndpoint.Radius)
+						{
+							PrecomputedPoints.RemoveAt(0, j);
+
+							// Snap to polygon connector position for exact alignment
+							const FVector SnapPos = StartEndpoint.PolygonCenter + StartEndpoint.Direction * StartEndpoint.Radius;
+							FVector CrossingDir = (PrecomputedPoints[0].Position - SnapPos).GetSafeNormal();
+							if (CrossingDir.IsNearlyZero()) { CrossingDir = StartEndpoint.Direction; }
+
+							FZoneShapePoint CrossingPoint(SnapPos);
+							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
+							CrossingPoint.Type = DefaultPointType;
+							PrecomputedPoints.Insert(CrossingPoint, 0);
+
+							// Remove nearby points that would cause auto-bezier bulging
+							if (BufferSq > 0)
+							{
+								while (PrecomputedPoints.Num() > 2 &&
+									(PrecomputedPoints[1].Position - PrecomputedPoints[0].Position).SizeSquared() < BufferSq)
+								{
+									PrecomputedPoints.RemoveAt(1);
+								}
+							}
+
+							bFoundCrossing = true;
+							break;
+						}
+					}
+
+					if (!bFoundCrossing)
+					{
+						const double FirstProj = (PrecomputedPoints[0].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
+						if (FirstProj < StartEndpoint.Radius)
+						{
+							bDegenerate = true;
+							return;
+						}
+					}
+				}
+				else
+				{
+					if (bIsReversed) { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius; }
+					else { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; }
+				}
 			}
-			else
+
+			// --- End endpoint ---
+			if (!LastNode->IsLeaf())
 			{
-				if (!FirstNode->IsLeaf()) { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; }
-				if (!LastNode->IsLeaf()) { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius; }
+				if (EndEndpoint.bValid && bTrim)
+				{
+					// Walk backward from end to find the outermost half-space boundary crossing.
+					// Walking backward (not forward) prevents removing valid outside points
+					// that appear after an intermediate inside dip on curved roads.
+					bool bFoundCrossing = false;
+
+					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
+					{
+						const double ProjJ = (PrecomputedPoints[j].Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
+						const double ProjPrev = (PrecomputedPoints[j - 1].Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
+
+						if (ProjJ < EndEndpoint.Radius && ProjPrev >= EndEndpoint.Radius)
+						{
+							PrecomputedPoints.RemoveAt(j, PrecomputedPoints.Num() - j);
+
+							// Snap to polygon connector position for exact alignment
+							const FVector SnapPos = EndEndpoint.PolygonCenter + EndEndpoint.Direction * EndEndpoint.Radius;
+							FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
+							if (CrossingDir.IsNearlyZero()) { CrossingDir = -EndEndpoint.Direction; }
+
+							FZoneShapePoint CrossingPoint(SnapPos);
+							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
+							CrossingPoint.Type = DefaultPointType;
+							PrecomputedPoints.Add(CrossingPoint);
+
+							// Remove nearby points that would cause auto-bezier bulging
+							if (BufferSq > 0)
+							{
+								while (PrecomputedPoints.Num() > 2 &&
+									(PrecomputedPoints[PrecomputedPoints.Num() - 2].Position - PrecomputedPoints.Last().Position).SizeSquared() < BufferSq)
+								{
+									PrecomputedPoints.RemoveAt(PrecomputedPoints.Num() - 2);
+								}
+							}
+
+							bFoundCrossing = true;
+							break;
+						}
+					}
+
+					if (!bFoundCrossing)
+					{
+						const double LastProj = (PrecomputedPoints.Last().Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
+						if (LastProj < EndEndpoint.Radius)
+						{
+							bDegenerate = true;
+							return;
+						}
+					}
+				}
+				else
+				{
+					if (bIsReversed) { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; }
+					else { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius; }
+				}
+			}
+
+			// Failsafe: ZoneGraph requires at least 2 shape points
+			if (PrecomputedPoints.Num() < 2)
+			{
+				bDegenerate = true;
 			}
 		}
 	}
@@ -349,8 +476,8 @@ namespace PCGExClusterToZoneGraph
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, FromStart[A]);
-				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, FromStart[B]);
+				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[A]->Chain->Seed.Node);
+				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[B]->Chain->Seed.Node);
 				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
 
@@ -362,12 +489,19 @@ namespace PCGExClusterToZoneGraph
 		{
 			const int32 Ri = Order[i];
 			const TSharedPtr<FZGRoad>& Road = Roads[Ri];
+			const bool bAtChainSeed = (NodeIndex == Road->Chain->Seed.Node);
 
-			const PCGExClusters::FNode* OtherNode = (Road->Chain->SingleEdge != -1)
-				                                        ? (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links.Last()) : Cluster->GetNode(Road->Chain->Seed.Node))
-				                                        : (FromStart[Ri] ? Cluster->GetNode(Road->Chain->Links[0]) : Cluster->GetNode(Road->Chain->Links.Last(1)));
+			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, bAtChainSeed);
 
-			const FVector RoadDirection = (Cluster->GetPos(OtherNode) - CenterPosition).GetSafeNormal();
+			// Store polygon boundary data on the road for precise intersection
+			FZGRoad::FPolygonEndpoint EP;
+			EP.PolygonCenter = CenterPosition;
+			EP.Direction = RoadDirection;
+			EP.Radius = CachedRoadRadii[Ri];
+			EP.bValid = true;
+
+			if (FromStart[Ri]) { Road->StartEndpoint = EP; }
+			else { Road->EndEndpoint = EP; }
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * CachedRoadRadii[Ri]);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
@@ -504,6 +638,9 @@ namespace PCGExClusterToZoneGraph
 
 		Roads.Reserve(NumChains);
 
+		TArray<bool> DFSReversed;
+		if (Settings->OrientationMode == EPCGExZGOrientationMode::DepthFirst) { ComputeDFSOrientation(DFSReversed); }
+
 		for (int i = 0; i < NumChains; i++)
 		{
 			const TSharedPtr<PCGExClusters::FNodeChain>& Chain = ProcessedChains[i];
@@ -511,7 +648,27 @@ namespace PCGExClusterToZoneGraph
 
 			int32 StartNode = Chain->Seed.Node;
 			int32 EndNode = Chain->Links.Last().Node;
-			const bool bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, StartNode, EndNode);
+
+			bool bReverse;
+			switch (Settings->OrientationMode)
+			{
+			case EPCGExZGOrientationMode::DepthFirst:
+				bReverse = DFSReversed[i] != Settings->bInvertOrientation;
+				if (bReverse) { Swap(StartNode, EndNode); }
+				break;
+
+			case EPCGExZGOrientationMode::GlobalDirection:
+				{
+					const FVector RoadDir = (Cluster->GetPos(EndNode) - Cluster->GetPos(StartNode)).GetSafeNormal();
+					bReverse = (FVector::DotProduct(RoadDir, Settings->OrientationDirection) < 0) != Settings->bInvertOrientation;
+					if (bReverse) { Swap(StartNode, EndNode); }
+				}
+				break;
+
+			default: // SortDirection
+				bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, StartNode, EndNode);
+				break;
+			}
 
 			TSharedPtr<FZGRoad> Road = MakeShared<FZGRoad>(this, Chain, bReverse);
 			Roads.Add(Road);
@@ -565,28 +722,6 @@ namespace PCGExClusterToZoneGraph
 		// Phase 4: Road precompute (uses synced radii for endpoint offsets)
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->Precompute(Cluster); }
 
-		MainThreadToken = TaskManager->TryCreateToken(TEXT("ZGMainThreadToken"));
-
-		PCGEX_SUBSYSTEM
-		PCGExSubsystem->RegisterBeginTickAction(
-			[PCGEX_ASYNC_THIS_CAPTURE]()
-			{
-				PCGEX_ASYNC_THIS
-				This->InitComponents();
-			});
-	}
-
-	void FProcessor::InitComponents()
-	{
-		TargetActor = /*Settings->TargetActor.Get() ? Settings->TargetActor.Get() :*/ ExecutionContext->GetTargetActor(nullptr);
-
-		if (!TargetActor)
-		{
-			PCGE_LOG_C(Error, GraphAndLog, ExecutionContext, FTEXT("Invalid target actor."));
-			bIsProcessorValid = false;
-			return;
-		}
-
 		const int32 NumPolygons = Polygons.Num();
 		const int32 TotalCount = NumPolygons + Roads.Num();
 
@@ -596,11 +731,27 @@ namespace PCGExClusterToZoneGraph
 
 		const int32 IOBase = (VtxDataFacade->Source->IOIndex + 1) * 100000;
 
-		// Single time-sliced loop: polygons first (indices 0..NumPolygons-1), then roads
+		// Create the time-sliced main-thread loop and register it as a handle.
+		// The registered handle prevents the task manager from completing until
+		// all iterations finish. No separate token or deferred tick action needed.
 		MainCompileLoop = MakeShared<PCGExMT::FTimeSlicedMainThreadLoop>(TotalCount);
 		MainCompileLoop->OnIterationCallback = [PCGEX_ASYNC_THIS_CAPTURE, NumPolygons, IOBase](const int32 Index, const PCGExMT::FScope& Scope)
 		{
 			PCGEX_ASYNC_THIS
+
+			// Resolve TargetActor lazily on first iteration (runs on main thread)
+			if (Index == 0)
+			{
+				This->TargetActor = This->ExecutionContext->GetTargetActor(nullptr);
+				if (!This->TargetActor)
+				{
+					PCGE_LOG_C(Error, GraphAndLog, This->ExecutionContext, FTEXT("Invalid target actor."));
+					This->bIsProcessorValid = false;
+				}
+			}
+
+			if (!This->TargetActor) { return; }
+
 			if (Index < NumPolygons)
 			{
 				auto& Polygon = This->Polygons[Index];
@@ -621,6 +772,7 @@ namespace PCGExClusterToZoneGraph
 			{
 				const int32 RoadIndex = Index - NumPolygons;
 				auto& Road = This->Roads[RoadIndex];
+				if (Road->bDegenerate) { return; }
 				Road->InitComponent(This->TargetActor);
 				This->Context->AttachManagedComponent(This->TargetActor, Road->Component, This->CachedAttachmentRules);
 				Road->Compile();
@@ -637,8 +789,7 @@ namespace PCGExClusterToZoneGraph
 		MainCompileLoop->OnCompleteCallback = [PCGEX_ASYNC_THIS_CAPTURE]()
 		{
 			PCGEX_ASYNC_THIS
-			This->Context->AddNotifyActor(This->TargetActor);
-			PCGEX_ASYNC_RELEASE_TOKEN(This->MainThreadToken)
+			if (This->TargetActor) { This->Context->AddNotifyActor(This->TargetActor); }
 		};
 
 		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, MainCompileLoop)
@@ -655,8 +806,106 @@ namespace PCGExClusterToZoneGraph
 
 	void FProcessor::Output()
 	{
-		// Component creation, attachment, and notify are handled in InitComponents()
-		// which runs on the main thread via RegisterBeginTickAction.
+		// Component creation, attachment, and notify are handled in MainCompileLoop
+		// which runs on the main thread via the time-sliced loop mechanism.
+	}
+
+	void FProcessor::ComputeDFSOrientation(TArray<bool>& OutReversed) const
+	{
+		const int32 NumChains = ProcessedChains.Num();
+		OutReversed.Init(false, NumChains);
+
+		// BFS to assign depths to polygon nodes, then orient chains from lower to higher depth.
+		// Leaf edges always flow toward the polygon (leaf is start, polygon is end).
+		// This produces consistent lane profiles at intersections: incoming roads face toward
+		// the polygon and outgoing roads face away, giving the same global forward direction
+		// for through-traffic.
+
+		struct FAdj
+		{
+			int32 ChainIdx;
+			int32 OtherNode;
+			bool bIsSeed;
+		};
+
+		TMap<int32, TArray<FAdj>> NodeAdj;
+
+		for (int32 i = 0; i < NumChains; i++)
+		{
+			const auto& Chain = ProcessedChains[i];
+			if (!Chain) { continue; }
+
+			const int32 SN = Chain->Seed.Node;
+			const int32 EN = Chain->Links.Last().Node;
+
+			if (!Cluster->GetNode(SN)->IsLeaf()) { NodeAdj.FindOrAdd(SN).Add({i, EN, true}); }
+			if (!Cluster->GetNode(EN)->IsLeaf()) { NodeAdj.FindOrAdd(EN).Add({i, SN, false}); }
+		}
+
+		// BFS to assign depths
+		TMap<int32, int32> NodeDepth;
+		TArray<int32> Queue;
+
+		for (auto& [Node, _] : NodeAdj)
+		{
+			if (NodeDepth.Contains(Node)) { continue; }
+			NodeDepth.Add(Node, 0);
+			Queue.Add(Node);
+
+			int32 Head = Queue.Num() - 1;
+			while (Head < Queue.Num())
+			{
+				const int32 Current = Queue[Head++];
+				const int32 CurrDepth = NodeDepth[Current];
+
+				if (const TArray<FAdj>* Neighbors = NodeAdj.Find(Current))
+				{
+					for (const FAdj& A : *Neighbors)
+					{
+						if (!Cluster->GetNode(A.OtherNode)->IsLeaf() && !NodeDepth.Contains(A.OtherNode))
+						{
+							NodeDepth.Add(A.OtherNode, CurrDepth + 1);
+							Queue.Add(A.OtherNode);
+						}
+					}
+				}
+			}
+		}
+
+		// Orient chains based on depth ordering
+		for (int32 i = 0; i < NumChains; i++)
+		{
+			const auto& Chain = ProcessedChains[i];
+			if (!Chain) { continue; }
+
+			const int32 SN = Chain->Seed.Node;
+			const int32 EN = Chain->Links.Last().Node;
+			const bool bSeedIsLeaf = Cluster->GetNode(SN)->IsLeaf();
+			const bool bEndIsLeaf = Cluster->GetNode(EN)->IsLeaf();
+
+			if (bSeedIsLeaf && !bEndIsLeaf)
+			{
+				// Seed is leaf, End is polygon → flow leaf→polygon → no reverse
+				OutReversed[i] = false;
+			}
+			else if (!bSeedIsLeaf && bEndIsLeaf)
+			{
+				// Seed is polygon, End is leaf → flow leaf→polygon → reverse
+				OutReversed[i] = true;
+			}
+			else if (!bSeedIsLeaf && !bEndIsLeaf)
+			{
+				// Both polygon nodes → flow from lower BFS depth to higher
+				const int32 SeedDepth = NodeDepth.FindRef(SN);
+				const int32 EndDepth = NodeDepth.FindRef(EN);
+
+				if (SeedDepth > EndDepth || (SeedDepth == EndDepth && SN > EN))
+				{
+					OutReversed[i] = true;
+				}
+			}
+			// Both leaf → keep default (false)
+		}
 	}
 
 	FZoneLaneProfileRef FProcessor::ResolveLaneProfileByName(FName ProfileName) const
