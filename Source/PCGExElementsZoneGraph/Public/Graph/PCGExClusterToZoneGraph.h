@@ -14,6 +14,14 @@
 #include "PCGExClusterToZoneGraph.generated.h"
 
 UENUM(BlueprintType)
+enum class EPCGExZGOrientationMode : uint8
+{
+	SortDirection   = 0 UMETA(DisplayName="Sort Direction", Tooltip="Use the Direction Settings sorting rules to determine road orientation."),
+	DepthFirst      = 1 UMETA(DisplayName="Depth-First", Tooltip="Use BFS depth ordering to orient roads from lower to higher depth. Consistent for tree-like graphs."),
+	GlobalDirection = 2 UMETA(DisplayName="Global Direction", Tooltip="Orient all roads to flow along a global direction vector."),
+};
+
+UENUM(BlueprintType)
 enum class EPCGExZGAutoRadiusMode : uint8
 {
 	Disabled       = 0 UMETA(DisplayName="Disabled"),
@@ -73,19 +81,24 @@ public:
 	//~End UPCGExPointsProcessorSettings
 
 	/** Defines the direction in which points will be ordered to form the final paths. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(PCG_Overridable))
 	FPCGExEdgeDirectionSettings DirectionSettings;
+
+	/** How road orientation is determined. Affects lane profile alignment at intersections. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction")
+	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::DepthFirst;
+
+	/** Flip all road orientations. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection"))
+	bool bInvertOrientation = false;
+
+	/** Global direction vector used to orient roads. Each road is oriented so its travel direction aligns with this vector. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
+	FVector OrientationDirection = FVector::ForwardVector;
 
 	/** Comma separated tags */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
 	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
-
-	/** Specify a list of functions to be called on the target actor after dynamic mesh creation. Functions need to be parameter-less and with "CallInEditor" flag enabled. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
-	TArray<FName> PostProcessFunctionNames;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
-	FPCGExAttachmentRules AttachmentRules;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	double PolygonRadius = 100;
@@ -104,6 +117,16 @@ public:
 	 * WidestLane (Min) / HalfProfile (Min): use the larger of user radius and computed value. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
+
+	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge.
+	 * When disabled, road endpoints are simply offset by the polygon radius along the road direction. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bTrimRoadEndpoints = true;
+
+	/** After trimming, remove road points closer than this distance to the polygon boundary.
+	 * Prevents auto-bezier artifacts from near-coincident points at the trim boundary. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, EditCondition="bTrimRoadEndpoints", ClampMin="0"))
+	double EndpointTrimBuffer = 0;
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -176,6 +199,14 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
 	FName LeaveName = "LeaveTangent";
+	
+	
+	/** Specify a list of functions to be called on the target actor after dynamic mesh creation. Functions need to be parameter-less and with "CallInEditor" flag enabled. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, AdvancedDisplay)
+	TArray<FName> PostProcessFunctionNames;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, AdvancedDisplay)
+	FPCGExAttachmentRules AttachmentRules;
 
 private:
 	friend class FPCGExClusterToZoneGraphElement;
@@ -230,8 +261,20 @@ namespace PCGExClusterToZoneGraph
 	class FZGRoad : public FZGBase
 	{
 	public:
+		struct FPolygonEndpoint
+		{
+			FVector PolygonCenter = FVector::ZeroVector;
+			FVector Direction = FVector::ZeroVector; // outward from polygon along road
+			double Radius = 0;
+			bool bValid = false;
+		};
+
 		TSharedPtr<PCGExClusters::FNodeChain> Chain;
 		bool bIsReversed = false;
+
+		FPolygonEndpoint StartEndpoint;
+		FPolygonEndpoint EndEndpoint;
+		bool bDegenerate = false;
 
 		FZoneLaneProfileRef CachedLaneProfile;
 		double CachedMaxLaneWidth = 0;
@@ -315,6 +358,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual void Cleanup() override;
 
+		void ComputeDFSOrientation(TArray<bool>& OutReversed) const;
 		FZoneLaneProfileRef ResolveLaneProfileByName(FName ProfileName) const;
 	};
 
