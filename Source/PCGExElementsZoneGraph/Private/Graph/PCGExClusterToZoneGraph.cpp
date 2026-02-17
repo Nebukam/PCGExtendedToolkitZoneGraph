@@ -242,12 +242,15 @@ namespace PCGExClusterToZoneGraph
 
 		if (!Chain->bIsClosedLoop)
 		{
+			const bool bTrim = S->bTrimRoadEndpoints;
+			const double BufferSq = S->EndpointTrimBuffer * S->EndpointTrimBuffer;
+
 			// --- Start endpoint ---
-			// Walk backward from end to find the outermost half-space boundary crossing.
 			if (!FirstNode->IsLeaf())
 			{
-				if (StartEndpoint.bValid)
+				if (StartEndpoint.bValid && bTrim)
 				{
+					// Walk backward from end to find the outermost half-space boundary crossing.
 					bool bFoundCrossing = false;
 
 					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
@@ -268,6 +271,16 @@ namespace PCGExClusterToZoneGraph
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
 							CrossingPoint.Type = DefaultPointType;
 							PrecomputedPoints.Insert(CrossingPoint, 0);
+
+							// Remove nearby points that would cause auto-bezier bulging
+							if (BufferSq > 0)
+							{
+								while (PrecomputedPoints.Num() > 2 &&
+									(PrecomputedPoints[1].Position - PrecomputedPoints[0].Position).SizeSquared() < BufferSq)
+								{
+									PrecomputedPoints.RemoveAt(1);
+								}
+							}
 
 							bFoundCrossing = true;
 							break;
@@ -292,13 +305,13 @@ namespace PCGExClusterToZoneGraph
 			}
 
 			// --- End endpoint ---
-			// Walk backward from end to find the outermost half-space boundary crossing.
-			// Walking backward (not forward) prevents removing valid outside points
-			// that appear after an intermediate inside dip on curved roads.
 			if (!LastNode->IsLeaf())
 			{
-				if (EndEndpoint.bValid)
+				if (EndEndpoint.bValid && bTrim)
 				{
+					// Walk backward from end to find the outermost half-space boundary crossing.
+					// Walking backward (not forward) prevents removing valid outside points
+					// that appear after an intermediate inside dip on curved roads.
 					bool bFoundCrossing = false;
 
 					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
@@ -319,6 +332,16 @@ namespace PCGExClusterToZoneGraph
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
 							CrossingPoint.Type = DefaultPointType;
 							PrecomputedPoints.Add(CrossingPoint);
+
+							// Remove nearby points that would cause auto-bezier bulging
+							if (BufferSq > 0)
+							{
+								while (PrecomputedPoints.Num() > 2 &&
+									(PrecomputedPoints[PrecomputedPoints.Num() - 2].Position - PrecomputedPoints.Last().Position).SizeSquared() < BufferSq)
+								{
+									PrecomputedPoints.RemoveAt(PrecomputedPoints.Num() - 2);
+								}
+							}
 
 							bFoundCrossing = true;
 							break;

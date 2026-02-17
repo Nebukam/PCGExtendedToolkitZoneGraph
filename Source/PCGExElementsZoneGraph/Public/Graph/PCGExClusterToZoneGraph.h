@@ -81,31 +81,24 @@ public:
 	//~End UPCGExPointsProcessorSettings
 
 	/** Defines the direction in which points will be ordered to form the final paths. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(PCG_Overridable))
 	FPCGExEdgeDirectionSettings DirectionSettings;
 
 	/** How road orientation is determined. Affects lane profile alignment at intersections. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
-	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::GlobalDirection;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction")
+	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::DepthFirst;
 
 	/** Flip all road orientations. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection"))
 	bool bInvertOrientation = false;
 
 	/** Global direction vector used to orient roads. Each road is oriented so its travel direction aligns with this vector. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
 	FVector OrientationDirection = FVector::ForwardVector;
 
 	/** Comma separated tags */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
 	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
-
-	/** Specify a list of functions to be called on the target actor after dynamic mesh creation. Functions need to be parameter-less and with "CallInEditor" flag enabled. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
-	TArray<FName> PostProcessFunctionNames;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
-	FPCGExAttachmentRules AttachmentRules;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	double PolygonRadius = 100;
@@ -124,6 +117,16 @@ public:
 	 * WidestLane (Min) / HalfProfile (Min): use the larger of user radius and computed value. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
+
+	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge.
+	 * When disabled, road endpoints are simply offset by the polygon radius along the road direction. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
+	bool bTrimRoadEndpoints = true;
+
+	/** After trimming, remove road points closer than this distance to the polygon boundary.
+	 * Prevents auto-bezier artifacts from near-coincident points at the trim boundary. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(EditCondition="bTrimRoadEndpoints", ClampMin="0"))
+	double EndpointTrimBuffer = 0;
 
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
@@ -196,6 +199,14 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
 	FName LeaveName = "LeaveTangent";
+	
+	
+	/** Specify a list of functions to be called on the target actor after dynamic mesh creation. Functions need to be parameter-less and with "CallInEditor" flag enabled. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, AdvancedDisplay)
+	TArray<FName> PostProcessFunctionNames;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, AdvancedDisplay)
+	FPCGExAttachmentRules AttachmentRules;
 
 private:
 	friend class FPCGExClusterToZoneGraphElement;
