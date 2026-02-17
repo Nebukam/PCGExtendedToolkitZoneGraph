@@ -14,6 +14,14 @@
 #include "PCGExClusterToZoneGraph.generated.h"
 
 UENUM(BlueprintType)
+enum class EPCGExZGOrientationMode : uint8
+{
+	SortDirection   = 0 UMETA(DisplayName="Sort Direction", Tooltip="Use the Direction Settings sorting rules to determine road orientation."),
+	DepthFirst      = 1 UMETA(DisplayName="Depth-First", Tooltip="Use BFS depth ordering to orient roads from lower to higher depth. Consistent for tree-like graphs."),
+	GlobalDirection = 2 UMETA(DisplayName="Global Direction", Tooltip="Orient all roads to flow along a global direction vector."),
+};
+
+UENUM(BlueprintType)
 enum class EPCGExZGAutoRadiusMode : uint8
 {
 	Disabled       = 0 UMETA(DisplayName="Disabled"),
@@ -75,6 +83,18 @@ public:
 	/** Defines the direction in which points will be ordered to form the final paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
 	FPCGExEdgeDirectionSettings DirectionSettings;
+
+	/** How road orientation is determined. Affects lane profile alignment at intersections. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::GlobalDirection;
+
+	/** Flip all road orientations. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection"))
+	bool bInvertOrientation = false;
+
+	/** Global direction vector used to orient roads. Each road is oriented so its travel direction aligns with this vector. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
+	FVector OrientationDirection = FVector::ForwardVector;
 
 	/** Comma separated tags */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
@@ -230,8 +250,20 @@ namespace PCGExClusterToZoneGraph
 	class FZGRoad : public FZGBase
 	{
 	public:
+		struct FPolygonEndpoint
+		{
+			FVector PolygonCenter = FVector::ZeroVector;
+			FVector Direction = FVector::ZeroVector; // outward from polygon along road
+			double Radius = 0;
+			bool bValid = false;
+		};
+
 		TSharedPtr<PCGExClusters::FNodeChain> Chain;
 		bool bIsReversed = false;
+
+		FPolygonEndpoint StartEndpoint;
+		FPolygonEndpoint EndEndpoint;
+		bool bDegenerate = false;
 
 		FZoneLaneProfileRef CachedLaneProfile;
 		double CachedMaxLaneWidth = 0;
@@ -315,6 +347,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual void Cleanup() override;
 
+		void ComputeDFSOrientation(TArray<bool>& OutReversed) const;
 		FZoneLaneProfileRef ResolveLaneProfileByName(FName ProfileName) const;
 	};
 
