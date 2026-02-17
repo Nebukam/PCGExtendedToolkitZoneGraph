@@ -120,12 +120,12 @@ public:
 
 	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge.
 	 * When disabled, road endpoints are simply offset by the polygon radius along the road direction. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bTrimRoadEndpoints = true;
 
 	/** After trimming, remove road points closer than this distance to the polygon boundary.
 	 * Prevents auto-bezier artifacts from near-coincident points at the trim boundary. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(EditCondition="bTrimRoadEndpoints", ClampMin="0"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, EditCondition="bTrimRoadEndpoints", ClampMin="0"))
 	double EndpointTrimBuffer = 0;
 
 
