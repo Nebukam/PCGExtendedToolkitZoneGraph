@@ -33,8 +33,13 @@ PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() con
 TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties() const
 {
 	TArray<FPCGPinProperties> PinProperties = Super::OutputPinProperties();
-	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal)
-	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal)
+	
+	if (bOutputPolygonPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal) }
+	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Advanced) }
+
+	if (bOutputRoadPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal) }
+	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Advanced) }
+
 	return PinProperties;
 }
 
@@ -212,7 +217,11 @@ namespace PCGExClusterToZoneGraph
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, ChainSize);
 
-		if (Chain->bIsClosedLoop) { const int32 LastNode = Nodes.Last(); Nodes.Add(LastNode); }
+		if (Chain->bIsClosedLoop)
+		{
+			const int32 FirstNode = Nodes[0];
+			Nodes.Add(FirstNode);
+		}
 
 		for (int i = 0; i < ChainSize; i++)
 		{
@@ -477,8 +486,14 @@ namespace PCGExClusterToZoneGraph
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[A]->Chain->Seed.Node);
-				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[B]->Chain->Seed.Node);
+				const bool bSeedA = (NodeIndex == Roads[A]->Chain->Seed.Node);
+				const bool bEndA = (NodeIndex == Roads[A]->Chain->Links.Last().Node);
+				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, (bSeedA && bEndA) ? FromStart[A] : bSeedA);
+
+				const bool bSeedB = (NodeIndex == Roads[B]->Chain->Seed.Node);
+				const bool bEndB = (NodeIndex == Roads[B]->Chain->Links.Last().Node);
+				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, (bSeedB && bEndB) ? FromStart[B] : bSeedB);
+
 				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
 
@@ -491,8 +506,11 @@ namespace PCGExClusterToZoneGraph
 			const int32 Ri = Order[i];
 			const TSharedPtr<FZGRoad>& Road = Roads[Ri];
 			const bool bAtChainSeed = (NodeIndex == Road->Chain->Seed.Node);
+			const bool bAtChainEnd = (NodeIndex == Road->Chain->Links.Last().Node);
 
-			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, bAtChainSeed);
+			// For lollipop chains (single breakpoint on closed loop), seed==end node.
+			// Use FromStart to disambiguate: start connection → first edge dir, end connection → last edge dir.
+			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, (bAtChainSeed && bAtChainEnd) ? FromStart[Ri] : bAtChainSeed);
 
 			// Store polygon boundary data on the road for precise intersection
 			FZGRoad::FPolygonEndpoint EP;
