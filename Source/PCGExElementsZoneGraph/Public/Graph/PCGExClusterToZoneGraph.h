@@ -10,6 +10,7 @@
 #include "ZoneShapeComponent.h"
 #include "Core/PCGExClustersProcessor.h"
 #include "Details/PCGExAttachmentRules.h"
+#include "Details/PCGExInputShorthandsDetails.h"
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
@@ -29,6 +30,15 @@ enum class EPCGExZGAutoRadiusMode : uint8
 	HalfProfile    = 2 UMETA(DisplayName="Half Profile Width"),
 	WidestLaneMin  = 3 UMETA(DisplayName="Widest Lane (Min)"),
 	HalfProfileMin = 4 UMETA(DisplayName="Half Profile Width (Min)"),
+};
+
+UENUM(BlueprintType)
+enum class EPCGExZGTangentLengthMode : uint8
+{
+	Default    = 0 UMETA(DisplayName="Default", Tooltip="Don't set tangent length -- ZoneGraph handles it."),
+	Manual     = 1 UMETA(DisplayName="Manual", Tooltip="Use a constant or per-point attribute value."),
+	Auto       = 2 UMETA(DisplayName="Auto", Tooltip="Average distance to chain neighbors, divided by 3."),
+	CatmullRom = 3 UMETA(DisplayName="Catmull-Rom", Tooltip="|P_next - P_prev| * 0.5."),
 };
 
 namespace PCGExClusters
@@ -63,6 +73,7 @@ public:
 #if WITH_EDITOR
 	PCGEX_NODE_INFOS(ClusterToZoneGraph, "Cluster to Zone Graph", "Create Zone Graph from clusters.");
 	virtual FLinearColor GetNodeTitleColor() const override { return GetDefault<UPCGExGlobalSettings>()->ColorClusterOp; }
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 protected:
@@ -80,6 +91,9 @@ public:
 	PCGEX_NODE_POINT_FILTER(FName("Break Conditions"), "Filters used to know which points are 'break' points. Use those if you want to create more polygon shapes.", PCGExFactories::ClusterNodeFilters, false)
 	//~End UPCGExPointsProcessorSettings
 
+	UPROPERTY()
+	bool bCachedSupportsCustomLength = false;
+	
 	/** Defines the direction in which points will be ordered to form the final paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(PCG_Overridable))
 	FPCGExEdgeDirectionSettings DirectionSettings;
@@ -156,15 +170,30 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneShapePointType RoadPointType = FZoneShapePointType::AutoBezier;
 
+	/** How road tangent lengths are determined. Controls bezier curve tightness. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(DisplayName=" ├─ Tangent Length Mode", EditCondition="bCachedSupportsCustomLength", EditConditionHides, HideEditConditionToggle))
+	EPCGExZGTangentLengthMode RoadTangentLengthMode = EPCGExZGTangentLengthMode::Default;
+
+	/** Tangent length value -- constant or per-point attribute. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName=" ├─ Length",
+		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual", EditConditionHides, HideEditConditionToggle))
+	FPCGExInputShorthandNameDoubleAbs TangentLength = FPCGExInputShorthandNameDoubleAbs(FName("TangentLength"), 100.0, false);
+
+	/** Scale multiplier applied to all tangent lengths (manual or computed). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName=" └─ Scale", ClampMin=0, UIMin=0,
+		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode != EPCGExZGTangentLengthMode::Default", EditConditionHides, HideEditConditionToggle))
+	double TangentLengthScale = 1.0;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bOverrideRoadPointType = false;
-
+	
 	/** Per-edge road shape point type override. Read from: Points. Attribute type: int32.
 	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
 	FName RoadPointTypeAttribute = FName("RoadPointType");
 
 
+	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
 	FZoneLaneProfileRef LaneProfile;
 
@@ -339,6 +368,8 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<PCGExData::TBuffer<int32>> RoadPointTypeBuffer;
 		TSharedPtr<PCGExData::TBuffer<int32>> AdditionalIntersectionTagsBuffer;
 		TSharedPtr<PCGExData::TBuffer<FName>> EdgeLaneProfileBuffer;
+
+		TSharedPtr<PCGExDetails::TSettingValue<double>> TangentLengthGetter;
 
 	public:
 		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade)
