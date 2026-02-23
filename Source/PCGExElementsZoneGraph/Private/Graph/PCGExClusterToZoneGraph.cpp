@@ -29,11 +29,24 @@ namespace PCGExClusterToZoneGraph
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 
+#if WITH_EDITOR
+void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	bCachedSupportsCustomLength = bOverrideRoadPointType || RoadPointType == FZoneShapePointType::Bezier;
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+}
+#endif
+
 TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties() const
 {
 	TArray<FPCGPinProperties> PinProperties = Super::OutputPinProperties();
-	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal)
-	PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal)
+
+	if (bOutputPolygonPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal) }
+	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Advanced) }
+
+	if (bOutputRoadPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal) }
+	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Advanced) }
+
 	return PinProperties;
 }
 
@@ -211,26 +224,53 @@ namespace PCGExClusterToZoneGraph
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, ChainSize);
 
-		if (Chain->bIsClosedLoop) { const int32 LastNode = Nodes.Last(); Nodes.Add(LastNode); }
+		if (Chain->bIsClosedLoop)
+		{
+			const int32 FirstNode = Nodes[0];
+			Nodes.Add(FirstNode);
+		}
 
 		for (int i = 0; i < ChainSize; i++)
 		{
 			const FVector Position = Cluster->GetPos(Nodes[i]);
-			const FVector NextPosition = (i == ChainSize - 1)
-				                             ? Position + (Position - Cluster->GetPos(Nodes[i - 1]))
-				                             : Cluster->GetPos(Nodes[i + 1]);
+			const int32 NodePointIndex = Cluster->GetNode(Nodes[i])->PointIndex;
+
+			// Average of prev→current and current→next for a smoother direction hint.
+			// Closed loops have Nodes[ChainSize] == Nodes[0], so i+1 is always valid.
+			// Open chains: endpoints fall back to single-neighbor chord.
+			FVector Forward;
+			if (i == 0 && !Chain->bIsClosedLoop)
+			{
+				Forward = (Cluster->GetPos(Nodes[1]) - Position).GetSafeNormal();
+			}
+			else if (i == ChainSize - 1 && !Chain->bIsClosedLoop)
+			{
+				Forward = (Position - Cluster->GetPos(Nodes[i - 1])).GetSafeNormal();
+			}
+			else
+			{
+				const int32 PrevIdx = (i == 0) ? ChainSize - 1 : i - 1;
+				const FVector DirPrev = (Position - Cluster->GetPos(Nodes[PrevIdx])).GetSafeNormal();
+				const FVector DirNext = (Cluster->GetPos(Nodes[i + 1]) - Position).GetSafeNormal();
+				Forward = (DirPrev + DirNext).GetSafeNormal();
+				if (Forward.IsNearlyZero()) { Forward = DirNext; }
+			}
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
-			ShapePoint.SetRotationFromForwardAndUp((NextPosition - Position), FVector::UpVector);
+			ShapePoint.SetRotationFromForwardAndUp(Forward, FVector::UpVector);
 
 			if (Processor->RoadPointTypeBuffer)
 			{
-				const int32 NodePointIndex = Cluster->GetNode(Nodes[i])->PointIndex;
 				ShapePoint.Type = static_cast<FZoneShapePointType>(FMath::Clamp(Processor->RoadPointTypeBuffer->Read(NodePointIndex), 0, 3));
 			}
 			else
 			{
 				ShapePoint.Type = DefaultPointType;
+			}
+
+			if (S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual && Processor->TangentLengthGetter)
+			{
+				ShapePoint.TangentLength = Processor->TangentLengthGetter->Read(NodePointIndex) * S->TangentLengthScale;
 			}
 
 			PrecomputedPoints[i] = ShapePoint;
@@ -259,6 +299,10 @@ namespace PCGExClusterToZoneGraph
 
 						if (ProjJ >= StartEndpoint.Radius && ProjPrev < StartEndpoint.Radius)
 						{
+							// Capture tangent lengths before removal for interpolation
+							const double TL_Prev = PrecomputedPoints[j - 1].TangentLength;
+							const double TL_J = PrecomputedPoints[j].TangentLength;
+
 							PrecomputedPoints.RemoveAt(0, j);
 
 							// Snap to polygon connector position for exact alignment
@@ -269,6 +313,13 @@ namespace PCGExClusterToZoneGraph
 							FZoneShapePoint CrossingPoint(SnapPos);
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
 							CrossingPoint.Type = DefaultPointType;
+
+							if (S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+							{
+								const double Alpha = (StartEndpoint.Radius - ProjPrev) / (ProjJ - ProjPrev);
+								CrossingPoint.TangentLength = FMath::Lerp(TL_Prev, TL_J, Alpha);
+							}
+
 							PrecomputedPoints.Insert(CrossingPoint, 0);
 
 							// Remove nearby points that would cause auto-bezier bulging
@@ -320,6 +371,10 @@ namespace PCGExClusterToZoneGraph
 
 						if (ProjJ < EndEndpoint.Radius && ProjPrev >= EndEndpoint.Radius)
 						{
+							// Capture tangent lengths before removal for interpolation
+							const double TL_Prev = PrecomputedPoints[j - 1].TangentLength;
+							const double TL_J = PrecomputedPoints[j].TangentLength;
+
 							PrecomputedPoints.RemoveAt(j, PrecomputedPoints.Num() - j);
 
 							// Snap to polygon connector position for exact alignment
@@ -330,6 +385,13 @@ namespace PCGExClusterToZoneGraph
 							FZoneShapePoint CrossingPoint(SnapPos);
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
 							CrossingPoint.Type = DefaultPointType;
+
+							if (S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+							{
+								const double Alpha = (EndEndpoint.Radius - ProjPrev) / (ProjJ - ProjPrev);
+								CrossingPoint.TangentLength = FMath::Lerp(TL_Prev, TL_J, Alpha);
+							}
+
 							PrecomputedPoints.Add(CrossingPoint);
 
 							// Remove nearby points that would cause auto-bezier bulging
@@ -368,6 +430,61 @@ namespace PCGExClusterToZoneGraph
 			if (PrecomputedPoints.Num() < 2)
 			{
 				bDegenerate = true;
+			}
+		}
+
+		// --- Auto/CatmullRom tangent pass ---
+		// Computed from final PrecomputedPoints positions (after trimming, crossing points included).
+		// Also overrides rotation with smooth tangent direction for Bezier point types.
+		if (!bDegenerate && (S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Auto || S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom))
+		{
+			const int32 Num = PrecomputedPoints.Num();
+			const bool bLoop = Chain->bIsClosedLoop;
+			const double Scale = S->TangentLengthScale;
+			const bool bCatmullRom = (S->RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom);
+
+			for (int32 k = 0; k < Num; k++)
+			{
+				FVector Prev, Next;
+				if (bLoop)
+				{
+					Prev = PrecomputedPoints[(k - 1 + Num) % Num].Position;
+					Next = PrecomputedPoints[(k + 1) % Num].Position;
+				}
+				else if (k == 0)
+				{
+					Next = PrecomputedPoints[1].Position;
+					Prev = PrecomputedPoints[0].Position - (Next - PrecomputedPoints[0].Position); // mirror
+				}
+				else if (k == Num - 1)
+				{
+					Prev = PrecomputedPoints[Num - 2].Position;
+					Next = PrecomputedPoints[Num - 1].Position + (PrecomputedPoints[Num - 1].Position - Prev); // mirror
+				}
+				else
+				{
+					Prev = PrecomputedPoints[k - 1].Position;
+					Next = PrecomputedPoints[k + 1].Position;
+				}
+
+				// Smooth tangent direction — override rotation
+				const FVector TangentDir = (Next - Prev).GetSafeNormal();
+				if (!TangentDir.IsNearlyZero())
+				{
+					PrecomputedPoints[k].SetRotationFromForwardAndUp(TangentDir, FVector::UpVector);
+				}
+
+				// Tangent magnitude
+				if (bCatmullRom)
+				{
+					PrecomputedPoints[k].TangentLength = FVector::Dist(Prev, Next) / 6.0 * Scale;
+				}
+				else // Auto
+				{
+					const double DistPrev = FVector::Dist(PrecomputedPoints[k].Position, Prev);
+					const double DistNext = FVector::Dist(PrecomputedPoints[k].Position, Next);
+					PrecomputedPoints[k].TangentLength = (DistPrev + DistNext) * 0.5 / 3.0 * Scale;
+				}
 			}
 		}
 	}
@@ -476,8 +593,14 @@ namespace PCGExClusterToZoneGraph
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[A]->Chain->Seed.Node);
-				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, NodeIndex == Roads[B]->Chain->Seed.Node);
+				const bool bSeedA = (NodeIndex == Roads[A]->Chain->Seed.Node);
+				const bool bEndA = (NodeIndex == Roads[A]->Chain->Links.Last().Node);
+				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, (bSeedA && bEndA) ? FromStart[A] : bSeedA);
+
+				const bool bSeedB = (NodeIndex == Roads[B]->Chain->Seed.Node);
+				const bool bEndB = (NodeIndex == Roads[B]->Chain->Links.Last().Node);
+				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, (bSeedB && bEndB) ? FromStart[B] : bSeedB);
+
 				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
 
@@ -490,8 +613,11 @@ namespace PCGExClusterToZoneGraph
 			const int32 Ri = Order[i];
 			const TSharedPtr<FZGRoad>& Road = Roads[Ri];
 			const bool bAtChainSeed = (NodeIndex == Road->Chain->Seed.Node);
+			const bool bAtChainEnd = (NodeIndex == Road->Chain->Links.Last().Node);
 
-			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, bAtChainSeed);
+			// For lollipop chains (single breakpoint on closed loop), seed==end node.
+			// Use FromStart to disambiguate: start connection → first edge dir, end connection → last edge dir.
+			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, (bAtChainSeed && bAtChainEnd) ? FromStart[Ri] : bAtChainSeed);
 
 			// Store polygon boundary data on the road for precise intersection
 			FZGRoad::FPolygonEndpoint EP;
@@ -580,6 +706,12 @@ namespace PCGExClusterToZoneGraph
 		if (Settings->bOverrideRoadPointType) { RoadPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(Settings->RoadPointTypeAttribute); }
 		if (Settings->bOverrideAdditionalIntersectionTags) { AdditionalIntersectionTagsBuffer = VtxDataFacade->GetBroadcaster<int32>(Settings->AdditionalIntersectionTagsAttribute); }
 		if (Settings->bOverrideLaneProfile) { EdgeLaneProfileBuffer = EdgeDataFacade->GetBroadcaster<FName>(Settings->LaneProfileAttribute); }
+
+		if (Settings->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+		{
+			TangentLengthGetter = Settings->TangentLength.GetValueSetting();
+			if (!TangentLengthGetter->Init(VtxDataFacade, false)) { return false; }
+		}
 
 		if (VtxFiltersManager)
 		{
@@ -932,6 +1064,7 @@ namespace PCGExClusterToZoneGraph
 		RoadPointTypeBuffer.Reset();
 		AdditionalIntersectionTagsBuffer.Reset();
 		EdgeLaneProfileBuffer.Reset();
+		TangentLengthGetter.Reset();
 	}
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
@@ -945,6 +1078,11 @@ namespace PCGExClusterToZoneGraph
 		if (Settings->bOverridePolygonPointType) { FacadePreloader.Register<int32>(ExecutionContext, Settings->PolygonPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
 		if (Settings->bOverrideRoadPointType) { FacadePreloader.Register<int32>(ExecutionContext, Settings->RoadPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
 		if (Settings->bOverrideAdditionalIntersectionTags) { FacadePreloader.Register<int32>(ExecutionContext, Settings->AdditionalIntersectionTagsAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
+
+		if (Settings->RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+		{
+			Settings->TangentLength.RegisterBufferDependencies(ExecutionContext, FacadePreloader);
+		}
 	}
 
 	void FBatch::OnProcessingPreparationComplete()
