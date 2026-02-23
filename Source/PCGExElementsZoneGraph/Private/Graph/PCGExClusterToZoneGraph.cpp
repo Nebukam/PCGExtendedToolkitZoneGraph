@@ -14,6 +14,8 @@
 #include "Data/PCGExData.h"
 #include "Data/PCGExPointIO.h"
 #include "Data/Utils/PCGExDataPreloader.h"
+#include "Details/PCGExSettingsDetails.h"
+#include "Helpers/PCGExStreamingHelpers.h"
 #include "Helpers/PCGExArrayHelpers.h"
 #include "Helpers/PCGExPointArrayDataHelpers.h"
 #include "Paths/PCGExPathsHelpers.h"
