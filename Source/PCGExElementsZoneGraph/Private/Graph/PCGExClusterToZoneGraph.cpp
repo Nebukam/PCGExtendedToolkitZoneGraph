@@ -65,11 +65,13 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 
 	if (const UPCGComponent* PCGComponent = InContext->GetComponent())
 	{
+		/*
 		if (PCGComponent->GenerationTrigger == EPCGComponentGenerationTrigger::GenerateAtRuntime)
 		{
 			PCGE_LOG_C(Error, GraphAndLog, Context, FTEXT("Zone Graph PCG Nodes should not be used in runtime-generated PCG components."));
 			return false;
 		}
+		*/
 	}
 
 	if (Settings->bOverrideLaneProfile)
